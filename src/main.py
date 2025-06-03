@@ -6,6 +6,7 @@ from sqlalchemy import func
 from datetime import date, datetime
 import asyncio
 from typing import List, Dict
+from pathlib import Path
 
 from database import get_db, Base, get_engine, Track, Race, Bet, BetResult, DailyROI, RaceEntry, RaceResult
 from scheduler import RaceScheduler
@@ -14,8 +15,12 @@ import os
 
 app = FastAPI(title="Horse Racing Betting Platform")
 
+# Get the base directory (parent of src)
+BASE_DIR = Path(__file__).resolve().parent.parent
+
 # Mount static files
-app.mount("/static", StaticFiles(directory="../static"), name="static")
+static_path = BASE_DIR / "static"
+app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
 
 # Initialize scheduler
 scheduler = RaceScheduler()
@@ -47,7 +52,8 @@ async def startup_event():
 
 @app.get("/", response_class=HTMLResponse)
 async def home():
-    with open("../templates/index.html", "r") as f:
+    template_path = BASE_DIR / "templates" / "index.html"
+    with open(template_path, "r") as f:
         return f.read()
 
 @app.get("/api/tracks")
