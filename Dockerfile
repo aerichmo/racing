@@ -15,8 +15,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
+# Make start script executable
+RUN chmod +x /app/start.sh
+
 # Expose port
 EXPOSE 8000
 
 # Run the application
-CMD ["sh", "-c", "cd src && python main.py"]
+CMD ["/app/start.sh"]
