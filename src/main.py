@@ -24,7 +24,30 @@ scheduler = RaceScheduler()
 async def lifespan(app: FastAPI):
     # Startup
     # Create database tables after environment variables are loaded
-    Base.metadata.create_all(bind=get_engine())
+    engine = get_engine()
+    
+    # First, try to add the name column if it doesn't exist
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        try:
+            # Check if name column exists
+            result = conn.execute(text("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'tracks' AND column_name = 'name'
+            """))
+            
+            if result.rowcount == 0:
+                # Add the column
+                conn.execute(text("ALTER TABLE tracks ADD COLUMN name VARCHAR"))
+                conn.execute(text("CREATE UNIQUE INDEX ix_tracks_name ON tracks(name)"))
+                conn.commit()
+                print("Added missing 'name' column to tracks table")
+        except Exception as e:
+            print(f"Warning: Could not check/add name column: {e}")
+            # Continue anyway - might be a new database
+    
+    Base.metadata.create_all(bind=engine)
     
     await scheduler.initialize()
     
