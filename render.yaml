@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: horse-racing-platform
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    autoDeploy: false
+    envVars:
+      - key: DATABASE_URL
+        value: postgresql://mob1e_user:dU3nupu3FgdqClieo5JZWoZ2eL1KSMZB@dpg-d0lk5oogjchc73f5ieqg-a/mob1e
+      - key: RACING_API_USERNAME
+        value: rUHkYRvkqy9sQhDpKC6nX2QI
+      - key: RACING_API_PASSWORD
+        value: m3ByXQkl97YuKZqxlT56Tjn4
+      - key: RACING_API_BASE_URL
+        value: https://api.theracingapi.com
+      - key: PORT
+        value: 8000
