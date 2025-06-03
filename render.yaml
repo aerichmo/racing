@@ -3,7 +3,7 @@ services:
     name: horse-racing-platform
     runtime: python
     buildCommand: "./render-build.sh"
-    startCommand: "python test_env.py && cd src && python main.py"
+    startCommand: "cd src && python main.py"
     autoDeploy: false
     envVars:
       - key: DATABASE_URL

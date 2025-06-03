@@ -8,6 +8,12 @@ from dotenv import load_dotenv
 # Load .env file if it exists, but allow environment variables to override
 load_dotenv(override=False)
 
+# Also try loading from parent directory (where .env typically is)
+from pathlib import Path
+env_path = Path(__file__).parent.parent / '.env'
+if env_path.exists():
+    load_dotenv(env_path, override=False)
+
 # Create engine lazily to avoid issues during import
 engine = None
 SessionLocal = None
@@ -17,7 +23,12 @@ def get_engine():
     if engine is None:
         DATABASE_URL = os.getenv("DATABASE_URL")
         if not DATABASE_URL:
-            raise ValueError("DATABASE_URL environment variable is not set. Please set it in your Render dashboard environment variables.")
+            raise ValueError(
+                "DATABASE_URL environment variable is not set. "
+                "Please set it in your Render dashboard under Environment Variables. "
+                "Go to your service settings and add DATABASE_URL with value: "
+                "postgresql://mob1e_user:dU3nupu3FgdqClieo5JZWoZ2eL1KSMZB@dpg-d0lk5oogjchc73f5ieqg-a.oregon-postgres.render.com/mob1e"
+            )
         engine = create_engine(DATABASE_URL)
     return engine
 
