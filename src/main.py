@@ -12,9 +12,6 @@ from scheduler import RaceScheduler
 from betting_engine import BettingEngine
 import os
 
-# Create database tables
-Base.metadata.create_all(bind=get_engine())
-
 app = FastAPI(title="Horse Racing Betting Platform")
 
 # Mount static files
@@ -25,6 +22,9 @@ scheduler = RaceScheduler()
 
 @app.on_event("startup")
 async def startup_event():
+    # Create database tables after environment variables are loaded
+    Base.metadata.create_all(bind=get_engine())
+    
     await scheduler.initialize()
     
     # Initialize tracks if not exists
