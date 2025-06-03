@@ -7,26 +7,22 @@ from datetime import date, datetime
 import asyncio
 from typing import List, Dict
 from pathlib import Path
+from contextlib import asynccontextmanager
 
 from database import get_db, Base, get_engine, Track, Race, Bet, BetResult, DailyROI, RaceEntry, RaceResult
 from scheduler import RaceScheduler
 from betting_engine import BettingEngine
 import os
 
-app = FastAPI(title="Horse Racing Betting Platform")
-
 # Get the base directory (parent of src)
 BASE_DIR = Path(__file__).resolve().parent.parent
-
-# Mount static files
-static_path = BASE_DIR / "static"
-app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
 
 # Initialize scheduler
 scheduler = RaceScheduler()
 
-@app.on_event("startup")
-async def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
     # Create database tables after environment variables are loaded
     Base.metadata.create_all(bind=get_engine())
     
@@ -49,6 +45,17 @@ async def startup_event():
         db.commit()
     finally:
         db.close()
+    
+    yield
+    
+    # Shutdown
+    # Add any cleanup code here if needed
+
+app = FastAPI(title="Horse Racing Betting Platform", lifespan=lifespan)
+
+# Mount static files
+static_path = BASE_DIR / "static"
+app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
 
 @app.get("/", response_class=HTMLResponse)
 async def home():

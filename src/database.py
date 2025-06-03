@@ -5,7 +5,8 @@ from sqlalchemy.sql import func
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load .env file if it exists, but allow environment variables to override
+load_dotenv(override=False)
 
 # Create engine lazily to avoid issues during import
 engine = None
@@ -16,7 +17,15 @@ def get_engine():
     if engine is None:
         DATABASE_URL = os.getenv("DATABASE_URL")
         if not DATABASE_URL:
-            raise ValueError("DATABASE_URL environment variable is not set. Please set it in your environment or .env file.")
+            # Try to load from .env file explicitly
+            from pathlib import Path
+            env_path = Path(__file__).parent.parent / '.env'
+            if env_path.exists():
+                load_dotenv(env_path, override=True)
+                DATABASE_URL = os.getenv("DATABASE_URL")
+            
+            if not DATABASE_URL:
+                raise ValueError("DATABASE_URL environment variable is not set. Please set it in your environment or .env file.")
         engine = create_engine(DATABASE_URL)
     return engine
 
