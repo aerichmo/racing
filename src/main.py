@@ -7,13 +7,13 @@ from datetime import date, datetime
 import asyncio
 from typing import List, Dict
 
-from database import get_db, Base, engine, Track, Race, Bet, BetResult, DailyROI, RaceEntry, RaceResult
+from database import get_db, Base, get_engine, Track, Race, Bet, BetResult, DailyROI, RaceEntry, RaceResult
 from scheduler import RaceScheduler
 from betting_engine import BettingEngine
 import os
 
 # Create database tables
-Base.metadata.create_all(bind=engine)
+Base.metadata.create_all(bind=get_engine())
 
 app = FastAPI(title="Horse Racing Betting Platform")
 

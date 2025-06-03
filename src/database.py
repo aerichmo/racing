@@ -7,9 +7,25 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL")
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# Create engine lazily to avoid issues during import
+engine = None
+SessionLocal = None
+
+def get_engine():
+    global engine
+    if engine is None:
+        DATABASE_URL = os.getenv("DATABASE_URL")
+        if not DATABASE_URL:
+            raise ValueError("DATABASE_URL environment variable is not set. Please set it in your environment or .env file.")
+        engine = create_engine(DATABASE_URL)
+    return engine
+
+def get_session_local():
+    global SessionLocal
+    if SessionLocal is None:
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=get_engine())
+    return SessionLocal
+
 Base = declarative_base()
 
 class Track(Base):
@@ -154,6 +170,7 @@ class DailyROI(Base):
     track = relationship("Track")
 
 def get_db():
+    SessionLocal = get_session_local()
     db = SessionLocal()
     try:
         yield db
