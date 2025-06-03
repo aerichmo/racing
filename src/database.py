@@ -15,35 +15,9 @@ SessionLocal = None
 def get_engine():
     global engine
     if engine is None:
-        # Debug: Print environment info
-        print(f"Current working directory: {os.getcwd()}")
-        print(f"DATABASE_URL from env: {os.getenv('DATABASE_URL')}")
-        
         DATABASE_URL = os.getenv("DATABASE_URL")
         if not DATABASE_URL:
-            # Try to load from .env file explicitly
-            from pathlib import Path
-            # Try multiple possible locations for .env
-            possible_paths = [
-                Path(__file__).parent.parent / '.env',  # /app/.env
-                Path(__file__).parent / '.env',  # /app/src/.env
-                Path.cwd() / '.env',  # Current directory
-                Path('/app/.env'),  # Absolute path in container
-            ]
-            
-            for env_path in possible_paths:
-                if env_path.exists():
-                    print(f"Loading .env from: {env_path}")
-                    load_dotenv(env_path, override=True)
-                    DATABASE_URL = os.getenv("DATABASE_URL")
-                    if DATABASE_URL:
-                        break
-            
-            if not DATABASE_URL:
-                print(f"Checked paths: {[str(p) for p in possible_paths]}")
-                raise ValueError("DATABASE_URL environment variable is not set. Please set it in your environment or .env file.")
-        
-        print(f"Using DATABASE_URL: {DATABASE_URL[:20]}...")  # Print first 20 chars for security
+            raise ValueError("DATABASE_URL environment variable is not set. Please set it in your Render dashboard environment variables.")
         engine = create_engine(DATABASE_URL)
     return engine
 
