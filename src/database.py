@@ -81,7 +81,6 @@ class Race(Base):
     race_type = Column(String)
     purse = Column(Float)
     conditions = Column(Text)
-    track_name = Column(String)
     
     track = relationship("Track")
     entries = relationship("RaceEntry", back_populates="race")
@@ -129,7 +128,6 @@ class HistoricalPerformance(Base):
     jockey_id = Column(Integer, ForeignKey("jockeys.id"))
     trainer_id = Column(Integer, ForeignKey("trainers.id"))
     race_date = Column(Date)
-    track_name = Column(String)
     distance = Column(Float)
     surface = Column(String)
     finish_position = Column(Integer)

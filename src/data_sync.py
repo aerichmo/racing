@@ -156,8 +156,7 @@ class DataSync:
                 surface=race_info.get('surface_description', ''),
                 race_type=race_info.get('race_type', ''),
                 purse=race_info.get('purse', 0),
-                conditions=race_info.get('race_restriction_description', ''),
-                track_name=track_name
+                conditions=race_info.get('race_restriction_description', '')
             )
             db.add(race)
             
@@ -253,7 +252,6 @@ class DataSync:
                         jockey_id=entry.jockey_id if perf.get('jockey_id') == entry.jockey.api_id else None,
                         trainer_id=entry.trainer_id if perf.get('trainer_id') == entry.trainer.api_id else None,
                         race_date=date.fromisoformat(perf.get('race_date')),
-                        track_name=perf.get('track_name'),
                         distance=perf.get('distance'),
                         surface=perf.get('surface'),
                         finish_position=perf.get('finish_position'),
