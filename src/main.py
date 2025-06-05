@@ -68,8 +68,8 @@ async def get_tracks(db: Session = Depends(get_db)):
     tracks = db.query(Track).all()
     return [{"id": t.id, "name": t.name} for t in tracks]
 
-@app.get("/api/recommendations/{track_id}")
-async def get_recommendations(track_id: int, db: Session = Depends(get_db)):
+@app.get("/api/races/{track_id}")
+async def get_races(track_id: int, db: Session = Depends(get_db)):
     today = date.today()
     
     # Get races for the track today
@@ -78,44 +78,29 @@ async def get_recommendations(track_id: int, db: Session = Depends(get_db)):
         Race.race_date == today
     ).order_by(Race.race_time).all()
     
-    
-    recommendations = []
-    daily_budget = 100.0
+    race_list = []
     
     for race in races:
-        # Get bets for this race
-        bets = db.query(Bet).filter(Bet.race_id == race.id).all()
-        
-        race_recommendations = []
-        for bet in bets:
-            entry = bet.entry
-            race_recommendations.append({
-                "horse_name": entry.horse.name,
-                "post_position": entry.post_position,
-                "current_odds": bet.odds,
-                "bet_amount": bet.amount,
-                "confidence": round(bet.confidence * 100, 1),
-                "expected_value": round(bet.expected_value, 2),
-                "percentage_of_budget": round((bet.amount / daily_budget) * 100, 1)
-            })
-            
-        # Check if race has results - avoid database schema mismatch
-        has_results = False
-        try:
-            has_results = any(entry.result for entry in race.entries)
-        except Exception:
-            # Skip if database schema doesn't match
-            pass
-        
-        recommendations.append({
+        race_info = {
             "race_number": race.race_number,
+            "race_name": race.conditions or f"Race {race.race_number}",
             "race_time": race.race_time.strftime("%I:%M %p"),
-            "recommendations": race_recommendations,
-            "has_results": has_results,
-            "race_id": race.id
-        })
+            "distance": f"{race.distance} {race.surface}" if race.distance else "Unknown distance",
+            "race_type": race.race_type or "Unknown",
+            "purse": f"${race.purse:,.0f}" if race.purse else "Unknown",
+            "horses": []
+        }
         
-    return recommendations
+        # Get horses for this race (simplified, avoiding complex relationships)
+        try:
+            # Simple approach - just show that horses exist
+            race_info["horses"] = ["Horses will be loaded in next layer"]
+        except Exception:
+            race_info["horses"] = []
+        
+        race_list.append(race_info)
+        
+    return race_list
 
 @app.get("/api/race-results/{race_id}")
 async def get_race_results(race_id: int, db: Session = Depends(get_db)):

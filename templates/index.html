@@ -174,6 +174,37 @@
             padding: 20px;
         }
         
+        .race-details {
+            margin: 15px 0;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+        }
+        
+        .race-details p {
+            margin: 5px 0;
+            color: #2c3e50;
+        }
+        
+        .horses-section {
+            margin-top: 15px;
+        }
+        
+        .horses-section h4 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+        
+        .horses-section ul {
+            list-style-type: none;
+            padding: 0;
+        }
+        
+        .horses-section li {
+            padding: 5px 0;
+            border-bottom: 1px solid #ecf0f1;
+        }
+        
         .results-section {
             margin-top: 20px;
             padding-top: 20px;
@@ -306,10 +337,10 @@
         
         async function loadRecommendations() {
             const container = document.getElementById('recommendations-container');
-            container.innerHTML = '<div class="loading">Loading recommendations...</div>';
+            container.innerHTML = '<div class="loading">Loading races...</div>';
             
             try {
-                const response = await fetch(`/api/recommendations/${currentTrackId}`);
+                const response = await fetch(`/api/races/${currentTrackId}`);
                 const races = await response.json();
                 
                 if (races.length === 0) {
@@ -320,53 +351,27 @@
                 container.innerHTML = races.map(race => `
                     <div class="race-card">
                         <div class="race-header">
-                            <div class="race-title">Race ${race.race_number}</div>
+                            <div class="race-title">${race.race_name}</div>
                             <div class="race-time">${race.race_time}</div>
                         </div>
-                        ${race.recommendations.length > 0 ? `
-                            <table class="recommendations-table">
-                                <thead>
-                                    <tr>
-                                        <th>Horse</th>
-                                        <th>Post</th>
-                                        <th>Odds</th>
-                                        <th>Bet Amount</th>
-                                        <th>% of Budget</th>
-                                        <th>Confidence</th>
-                                        <th>Expected Value</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${race.recommendations.map(rec => `
-                                        <tr>
-                                            <td class="horse-name">${rec.horse_name}</td>
-                                            <td>${rec.post_position}</td>
-                                            <td>${rec.current_odds}:1</td>
-                                            <td class="bet-amount">$${rec.bet_amount}</td>
-                                            <td>${rec.percentage_of_budget}%</td>
-                                            <td class="${getConfidenceClass(rec.confidence)}">${rec.confidence}%</td>
-                                            <td>${rec.expected_value}x</td>
-                                        </tr>
-                                    `).join('')}
-                                </tbody>
-                            </table>
-                        ` : '<div class="no-recommendations">No recommendations for this race</div>'}
-                        ${race.has_results ? `
-                            <div class="results-section" id="results-${race.race_id}">
-                                <div class="loading">Loading results...</div>
-                            </div>
-                        ` : ''}
+                        <div class="race-details">
+                            <p><strong>Distance:</strong> ${race.distance}</p>
+                            <p><strong>Type:</strong> ${race.race_type}</p>
+                            <p><strong>Purse:</strong> ${race.purse}</p>
+                        </div>
+                        <div class="horses-section">
+                            <h4>Horses:</h4>
+                            ${race.horses.length > 0 ? 
+                                `<ul>${race.horses.map(horse => `<li>${horse}</li>`).join('')}</ul>` :
+                                '<p>No horse entries loaded yet</p>'
+                            }
+                        </div>
                     </div>
                 `).join('');
                 
-                // Load results for races that have them
-                races.filter(race => race.has_results).forEach(race => {
-                    loadRaceResults(race.race_id);
-                });
-                
             } catch (error) {
-                console.error('Error loading recommendations:', error);
-                container.innerHTML = '<div class="no-recommendations">Error loading recommendations</div>';
+                console.error('Error loading races:', error);
+                container.innerHTML = '<div class="no-recommendations">Error loading races</div>';
             }
         }
         
