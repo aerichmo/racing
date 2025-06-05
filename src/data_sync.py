@@ -121,23 +121,38 @@ class DataSync:
     
     async def _sync_race(self, db: Session, track_id: int, race_info: dict, race_date: date):
         # Check if race already exists
+        race_key = race_info.get('race_key', '')
         existing_race = db.query(Race).filter(
-            Race.api_id == race_info.get('id', ''),
+            Race.api_id == race_key,
             Race.track_id == track_id
         ).first()
         
         if not existing_race:
+            # Extract race number from race_key (format: "R1", "R2", etc.)
+            race_key = race_info.get('race_key', '')
+            race_number = int(race_key.replace('R', '')) if race_key.startswith('R') else 1
+            
+            # Parse post time
+            post_time_str = race_info.get('post_time', '')
+            if post_time_str:
+                try:
+                    race_time = datetime.fromisoformat(post_time_str.replace('Z', '+00:00'))
+                except:
+                    race_time = datetime.now()
+            else:
+                race_time = datetime.now()
+            
             race = Race(
-                api_id=race_info.get('id', ''),
+                api_id=race_info.get('race_key', ''),
                 track_id=track_id,
-                race_number=race_info.get('race_number'),
+                race_number=race_number,
                 race_date=race_date,
-                race_time=datetime.fromisoformat(race_info.get('post_time')),
-                distance=race_info.get('distance'),
-                surface=race_info.get('surface'),
-                race_type=race_info.get('race_type'),
-                purse=race_info.get('purse'),
-                conditions=race_info.get('conditions')
+                race_time=race_time,
+                distance=race_info.get('distance_value', 0),
+                surface=race_info.get('surface_description', ''),
+                race_type=race_info.get('race_type', ''),
+                purse=race_info.get('purse', 0),
+                conditions=race_info.get('race_restriction_description', '')
             )
             db.add(race)
             
