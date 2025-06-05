@@ -56,7 +56,7 @@ async def lifespan(app: FastAPI):
     try:
         tracks = [
             {"name": "Remington Park", "code": "RP"},
-            {"name": "Fair Meadows Tulsa", "code": "FM"}  # FM maps to FMT in API
+            {"name": "Fair Meadows", "code": "FM"}  # Keep existing name, FM maps to FMT in API
         ]
         
         for track_data in tracks:
