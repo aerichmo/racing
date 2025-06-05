@@ -36,12 +36,16 @@ class DataSync:
             today = date.today()
             try:
                 races_data = await self.api_client.get_races_by_date(track_code, today)
+                logger.info(f"API returned {len(races_data.get('races', []))} races for {track_name}")
                 
                 for race_info in races_data.get('races', []):
                     await self._sync_race(db, track.id, race_info, today)
+                    logger.info(f"Synced race {race_info.get('race_number')} for {track_name}")
                     
             except Exception as e:
                 logger.error(f"Error syncing races for {track_name}: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
                 
         db.commit()
         logger.info("Initial data sync completed")
@@ -122,24 +126,62 @@ class DataSync:
     async def _sync_race(self, db: Session, track_id: int, race_info: dict, race_date: date):
         # Check if race already exists
         existing_race = db.query(Race).filter(
-            Race.api_id == race_info.get('id', ''),
-            Race.track_id == track_id
+            Race.track_id == track_id,
+            Race.race_date == race_date,
+            Race.race_number == race_info.get('race_number')
         ).first()
         
         if not existing_race:
+            # Parse race time properly
+            post_time_str = race_info.get('post_time', f"{race_date}T19:00:00")
+            try:
+                if 'T' in post_time_str:
+                    race_time = datetime.fromisoformat(post_time_str)
+                else:
+                    # Handle "7:00 PM" format
+                    from datetime import time
+                    time_part = post_time_str.replace(' PM', '').replace(' AM', '')
+                    hour = int(time_part.split(':')[0])
+                    minute = int(time_part.split(':')[1]) if ':' in time_part else 0
+                    if 'PM' in post_time_str and hour != 12:
+                        hour += 12
+                    elif 'AM' in post_time_str and hour == 12:
+                        hour = 0
+                    race_time = datetime.combine(race_date, time(hour, minute))
+            except Exception as e:
+                logger.error(f"Error parsing race time '{post_time_str}': {e}")
+                race_time = datetime.combine(race_date, time(19, 0))  # Default to 7 PM
+            
             race = Race(
-                api_id=race_info.get('id', ''),
+                api_id=race_info.get('id', f"AUTO_{track_id}_{race_date}_{race_info.get('race_number')}"),
                 track_id=track_id,
                 race_number=race_info.get('race_number'),
                 race_date=race_date,
-                race_time=datetime.fromisoformat(race_info.get('post_time')),
-                distance=race_info.get('distance'),
-                surface=race_info.get('surface'),
-                race_type=race_info.get('race_type'),
-                purse=race_info.get('purse'),
-                conditions=race_info.get('conditions')
+                race_time=race_time,
+                distance=race_info.get('distance', '6 furlongs'),
+                surface=race_info.get('surface', 'Dirt'),
+                race_type=race_info.get('race_type', 'Claiming'),
+                purse=race_info.get('purse', 25000),
+                conditions=race_info.get('conditions', '')
             )
             db.add(race)
+            db.flush()  # Get the race ID
+            
+            # Now sync entries for this race
+            try:
+                # Get track code from reverse lookup
+                track_obj = db.query(Track).filter(Track.id == track_id).first()
+                track_code = track_obj.code if track_obj else "FM"
+                
+                entries_data = await self.api_client.get_race_entries(
+                    track_code,
+                    race_date, 
+                    race_info.get('race_number')
+                )
+                await self._sync_entries(db, race.id, entries_data)
+                logger.info(f"Synced {len(entries_data.get('entries', []))} entries for race {race_info.get('race_number')}")
+            except Exception as e:
+                logger.error(f"Error syncing entries for race {race_info.get('race_number')}: {e}")
             
     async def _sync_entries(self, db: Session, race_id: int, entries_data: dict):
         for entry_info in entries_data.get('entries', []):
