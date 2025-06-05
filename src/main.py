@@ -197,17 +197,69 @@ async def get_roi_stats(track_id: int, db: Session = Depends(get_db)):
 
 @app.post("/api/sync/manual")
 async def trigger_manual_sync(db: Session = Depends(get_db)):
-    """Manual sync - combines initial sync, pre-race sync, and recommendations generation"""
+    """Manual sync - simplified direct approach"""
     try:
-        # Run initial sync to get all races for today
-        await scheduler.run_initial_sync()
+        from data_sync import DataSync
+        from racing_api import RacingAPIClient
         
-        # Run pre-race sync to get entries and generate recommendations
-        await scheduler.run_pre_race_sync()
+        api_client = RacingAPIClient()
+        today = date.today()
         
-        return {"status": "Manual sync completed - races and recommendations updated"}
+        # Get Fair Meadows track
+        track = db.query(Track).filter(Track.name == "Fair Meadows").first()
+        if not track:
+            return {"status": "Fair Meadows track not found in database"}
+        
+        # Get races directly from API
+        races_data = await api_client.get_races_by_date("FM", today)
+        
+        races_synced = 0
+        for race_info in races_data.get('races', []):
+            # Extract race key and number
+            race_key = race_info.get('race_key', '')
+            if not race_key:
+                continue
+                
+            race_number = int(race_key.replace('R', '')) if race_key.startswith('R') else 1
+            
+            # Check if already exists
+            existing = db.query(Race).filter(
+                Race.api_id == race_key,
+                Race.track_id == track.id
+            ).first()
+            
+            if not existing:
+                # Parse post time
+                post_time_str = race_info.get('post_time', '')
+                if post_time_str:
+                    try:
+                        race_time = datetime.fromisoformat(post_time_str.replace('Z', '+00:00'))
+                    except:
+                        race_time = datetime.now()
+                else:
+                    race_time = datetime.now()
+                
+                race = Race(
+                    api_id=race_key,
+                    track_id=track.id,
+                    race_number=race_number,
+                    race_date=today,
+                    race_time=race_time,
+                    distance=race_info.get('distance_value', 0),
+                    surface=race_info.get('surface_description', ''),
+                    race_type=race_info.get('race_type', ''),
+                    purse=race_info.get('purse', 0),
+                    conditions=race_info.get('race_restriction_description', '')
+                )
+                db.add(race)
+                races_synced += 1
+        
+        db.commit()
+        return {"status": f"Manual sync completed - {races_synced} races synced for Fair Meadows"}
+        
     except Exception as e:
-        return {"status": f"Manual sync failed: {str(e)}"}
+        import traceback
+        return {"status": f"Manual sync failed: {str(e)}", "error": traceback.format_exc()}
 
 
 @app.get("/api/debug/races")
