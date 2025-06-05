@@ -237,7 +237,7 @@ async def trigger_manual_sync(db: Session = Depends(get_db)):
                 
             # Handle race_key that might be a dict or other type
             if isinstance(race_key, dict):
-                race_number = i + 1  # Fallback to index
+                race_number = int(race_key.get('race_number', i + 1))
                 race_key = f"R{race_number}"
             elif isinstance(race_key, str) and race_key.startswith('R'):
                 race_number = int(race_key.replace('R', ''))
