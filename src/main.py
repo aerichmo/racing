@@ -256,6 +256,140 @@ async def trigger_pre_race_sync(db: Session = Depends(get_db)):
     await scheduler.run_pre_race_sync()
     return {"status": "Pre-race sync completed"}
 
+@app.post("/api/sync/force-fair-meadows")
+async def force_sync_fair_meadows_today(db: Session = Depends(get_db)):
+    """Emergency fix: Force sync Fair Meadows races for today"""
+    from racing_api import RacingAPIClient
+    from database import Horse, Jockey, Trainer, RaceEntry
+    
+    client = RacingAPIClient()
+    today = date.today()
+    
+    # Get Fair Meadows track
+    track = db.query(Track).filter(Track.code == 'FM').first()
+    if not track:
+        return {"error": "Fair Meadows track not found"}
+    
+    try:
+        # Get races from API
+        races_data = await client.get_races_by_date('FM', today)
+        races = races_data.get('races', [])
+        
+        races_created = 0
+        entries_created = 0
+        
+        for race_info in races:
+            # Check if race already exists
+            existing_race = db.query(Race).filter(
+                Race.track_id == track.id,
+                Race.race_date == today,
+                Race.race_number == race_info.get('race_number')
+            ).first()
+            
+            if not existing_race:
+                # Parse race time
+                post_time_str = race_info.get('post_time', f"{today}T19:00:00")
+                if 'T' in post_time_str:
+                    race_time = datetime.fromisoformat(post_time_str)
+                else:
+                    # Handle "7:00 PM" format
+                    time_part = post_time_str.replace(' PM', '').replace(' AM', '')
+                    hour = int(time_part.split(':')[0])
+                    minute = int(time_part.split(':')[1]) if ':' in time_part else 0
+                    if 'PM' in post_time_str and hour != 12:
+                        hour += 12
+                    elif 'AM' in post_time_str and hour == 12:
+                        hour = 0
+                    race_time = datetime.combine(today, time(hour, minute))
+                
+                # Create race
+                race = Race(
+                    api_id=race_info.get('id', f"FM_{today}_{race_info.get('race_number')}"),
+                    track_id=track.id,
+                    race_number=race_info.get('race_number'),
+                    race_date=today,
+                    race_time=race_time,
+                    distance=race_info.get('distance', '6 furlongs'),
+                    surface=race_info.get('surface', 'Dirt'),
+                    race_type=race_info.get('race_type', 'Claiming'),
+                    purse=race_info.get('purse', 25000),
+                    conditions=race_info.get('conditions', '')
+                )
+                db.add(race)
+                db.flush()  # Get race ID
+                races_created += 1
+                
+                # Get entries for this race
+                entries_data = await client.get_race_entries('FM', today, race_info.get('race_number'))
+                entries = entries_data.get('entries', [])
+                
+                for entry_info in entries:
+                    # Create/get horse
+                    horse = db.query(Horse).filter(
+                        Horse.registration_number == entry_info.get('horse_registration_number')
+                    ).first()
+                    if not horse:
+                        horse = Horse(
+                            registration_number=entry_info.get('horse_registration_number'),
+                            name=entry_info.get('horse_name'),
+                            age=entry_info.get('horse_age', 3)
+                        )
+                        db.add(horse)
+                        db.flush()
+                    
+                    # Create/get jockey
+                    jockey = db.query(Jockey).filter(
+                        Jockey.api_id == entry_info.get('jockey_id')
+                    ).first()
+                    if not jockey:
+                        jockey = Jockey(
+                            api_id=entry_info.get('jockey_id'),
+                            name=entry_info.get('jockey_name')
+                        )
+                        db.add(jockey)
+                        db.flush()
+                    
+                    # Create/get trainer
+                    trainer = db.query(Trainer).filter(
+                        Trainer.api_id == entry_info.get('trainer_id')
+                    ).first()
+                    if not trainer:
+                        trainer = Trainer(
+                            api_id=entry_info.get('trainer_id'),
+                            name=entry_info.get('trainer_name')
+                        )
+                        db.add(trainer)
+                        db.flush()
+                    
+                    # Create entry
+                    entry = RaceEntry(
+                        race_id=race.id,
+                        horse_id=horse.id,
+                        jockey_id=jockey.id,
+                        trainer_id=trainer.id,
+                        post_position=entry_info.get('post_position'),
+                        morning_line_odds=entry_info.get('morning_line_odds', 5.0),
+                        current_odds=entry_info.get('current_odds', 5.0),
+                        weight=entry_info.get('weight', 126),
+                        medication=entry_info.get('medication', ''),
+                        equipment=entry_info.get('equipment', '')
+                    )
+                    db.add(entry)
+                    entries_created += 1
+        
+        db.commit()
+        
+        return {
+            "status": "Force sync completed",
+            "races_created": races_created,
+            "entries_created": entries_created,
+            "message": f"Successfully synced {races_created} races with {entries_created} entries for Fair Meadows today"
+        }
+        
+    except Exception as e:
+        db.rollback()
+        return {"error": f"Force sync failed: {str(e)}"}
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
