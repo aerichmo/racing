@@ -257,7 +257,6 @@
         <button class="sync-btn" onclick="triggerSync('initial')">Manual Initial Sync</button>
         <button class="sync-btn" onclick="triggerSync('pre-race')">Manual Pre-Race Sync</button>
         <button class="sync-btn" onclick="triggerFairMeadowsSync()">Fair Meadows Sync</button>
-        <button class="sync-btn" onclick="addLiveRaces()" style="background-color: #e74c3c;">Add Live Races</button>
     </div>
     
     <script>
@@ -464,29 +463,6 @@
             }
         }
         
-        async function addLiveRaces() {
-            const button = event.target;
-            button.disabled = true;
-            button.textContent = 'Adding Live Races...';
-            
-            try {
-                const response = await fetch('/api/manual/add-live-races', {
-                    method: 'POST'
-                });
-                const result = await response.json();
-                alert(result.status);
-                
-                if (currentTrackId) {
-                    await loadRecommendations();
-                }
-            } catch (error) {
-                console.error('Error adding live races:', error);
-                alert('Error adding live races');
-            } finally {
-                button.disabled = false;
-                button.textContent = 'Add Live Races';
-            }
-        }
     </script>
 </body>
 </html>

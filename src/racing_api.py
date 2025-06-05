@@ -37,28 +37,46 @@ class RacingAPIClient:
         api_track_code = track_map.get(track_code, track_code)
         
         async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{self.base_url}/v1/meets/{api_track_code}/{race_date.strftime('%Y-%m-%d')}",
+            # First, get list of meets to find the meet_id for this track/date
+            meets_response = await client.get(
+                f"{self.base_url}/v1/north-america/meets",
                 headers=self.auth_header
             )
-            response.raise_for_status()
-            return response.json()
+            meets_response.raise_for_status()
+            meets_data = meets_response.json()
+            
+            # Find the meet for our track and date
+            target_date = race_date.strftime('%Y-%m-%d')
+            meet_id = None
+            
+            for meet in meets_data.get('meets', []):
+                if meet.get('track_id') == api_track_code and meet.get('date') == target_date:
+                    meet_id = meet.get('meet_id')
+                    break
+            
+            if not meet_id:
+                return {"races": []}  # No meet found for this track/date
+            
+            # Now get the entries for this meet (which contains race info)
+            entries_response = await client.get(
+                f"{self.base_url}/v1/north-america/meets/{meet_id}/entries",
+                headers=self.auth_header
+            )
+            entries_response.raise_for_status()
+            return entries_response.json()
     
     async def get_race_entries(self, track_code: str, race_date: date, race_number: int):
-        # Map internal track codes to API track codes
-        track_map = {
-            'FM': 'FMT',  # Fair Meadows -> Fair Meadows Tulsa
-            'RP': 'RP'    # Remington Park stays the same
-        }
-        api_track_code = track_map.get(track_code, track_code)
+        # This method now gets entries for a specific race from the meet entries
+        # We'll get all meet entries and filter for the specific race
+        race_data = await self.get_races_by_date(track_code, race_date)
         
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{self.base_url}/v1/entries/{api_track_code}/{race_date.strftime('%Y-%m-%d')}/{race_number}",
-                headers=self.auth_header
-            )
-            response.raise_for_status()
-            return response.json()
+        # Filter entries for the specific race number
+        race_entries = []
+        for entry in race_data.get('entries', []):
+            if entry.get('race_number') == race_number:
+                race_entries.append(entry)
+        
+        return {"entries": race_entries}
     
     async def get_race_results(self, track_code: str, race_date: date, race_number: int):
         # Map internal track codes to API track codes
@@ -70,12 +88,42 @@ class RacingAPIClient:
         
         async with httpx.AsyncClient() as client:
             try:
-                response = await client.get(
-                    f"{self.base_url}/v1/results/{api_track_code}/{race_date.strftime('%Y-%m-%d')}/{race_number}",
+                # First, get list of meets to find the meet_id for this track/date
+                meets_response = await client.get(
+                    f"{self.base_url}/v1/north-america/meets",
                     headers=self.auth_header
                 )
-                response.raise_for_status()
-                return response.json()
+                meets_response.raise_for_status()
+                meets_data = meets_response.json()
+                
+                # Find the meet for our track and date
+                target_date = race_date.strftime('%Y-%m-%d')
+                meet_id = None
+                
+                for meet in meets_data.get('meets', []):
+                    if meet.get('track_id') == api_track_code and meet.get('date') == target_date:
+                        meet_id = meet.get('meet_id')
+                        break
+                
+                if not meet_id:
+                    return None  # No meet found for this track/date
+                
+                # Get results for this meet
+                results_response = await client.get(
+                    f"{self.base_url}/v1/north-america/meets/{meet_id}/results",
+                    headers=self.auth_header
+                )
+                results_response.raise_for_status()
+                results_data = results_response.json()
+                
+                # Filter results for the specific race number
+                race_results = []
+                for result in results_data.get('results', []):
+                    if result.get('race_number') == race_number:
+                        race_results.append(result)
+                
+                return {"results": race_results}
+                
             except httpx.HTTPStatusError as e:
                 if e.response.status_code == 404:
                     return None
