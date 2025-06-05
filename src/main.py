@@ -195,25 +195,19 @@ async def get_roi_stats(track_id: int, db: Session = Depends(get_db)):
         ]
     }
 
-@app.post("/api/sync/initial")
-async def trigger_initial_sync(db: Session = Depends(get_db)):
-    """Manual trigger for initial sync"""
-    await scheduler.run_initial_sync()
-    return {"status": "Initial sync completed"}
-
-@app.post("/api/sync/pre-race")
-async def trigger_pre_race_sync(db: Session = Depends(get_db)):
-    """Manual trigger for pre-race sync"""
-    await scheduler.run_pre_race_sync()
-    return {"status": "Pre-race sync completed"}
-
-@app.post("/api/sync/force-fair-meadows")
-async def force_sync_fair_meadows(db: Session = Depends(get_db)):
-    """Force sync Fair Meadows races immediately"""
-    from data_sync import DataSync
-    sync = DataSync()
-    await sync.sync_initial_data(db)
-    return {"status": "Fair Meadows sync completed"}
+@app.post("/api/sync/manual")
+async def trigger_manual_sync(db: Session = Depends(get_db)):
+    """Manual sync - combines initial sync, pre-race sync, and recommendations generation"""
+    try:
+        # Run initial sync to get all races for today
+        await scheduler.run_initial_sync()
+        
+        # Run pre-race sync to get entries and generate recommendations
+        await scheduler.run_pre_race_sync()
+        
+        return {"status": "Manual sync completed - races and recommendations updated"}
+    except Exception as e:
+        return {"status": f"Manual sync failed: {str(e)}"}
 
 
 @app.post("/api/cleanup/races")
