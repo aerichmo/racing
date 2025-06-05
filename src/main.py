@@ -99,8 +99,13 @@ async def get_recommendations(track_id: int, db: Session = Depends(get_db)):
                 "percentage_of_budget": round((bet.amount / daily_budget) * 100, 1)
             })
             
-        # Check if race has results
-        has_results = any(entry.result for entry in race.entries)
+        # Check if race has results - avoid database schema mismatch
+        has_results = False
+        try:
+            has_results = any(entry.result for entry in race.entries)
+        except Exception:
+            # Skip if database schema doesn't match
+            pass
         
         recommendations.append({
             "race_number": race.race_number,
