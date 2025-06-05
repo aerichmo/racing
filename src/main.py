@@ -99,7 +99,47 @@ async def get_recommendations(track_id: int, db: Session = Depends(get_db)):
     track = db.query(Track).filter(Track.id == track_id).first()
     track_name = track.name if track else "Unknown Track"
     
-    # Get races for the track today
+    # EMERGENCY: If it's Fair Meadows (track_id 2) and no races in DB, return live data
+    if track_id == 2 and track_name == "Fair Meadows":
+        races = db.query(Race).filter(
+            Race.track_id == track_id,
+            Race.race_date == today
+        ).order_by(Race.race_time).all()
+        
+        if not races:
+            # Return live race data directly from API
+            from racing_api import RacingAPIClient
+            try:
+                client = RacingAPIClient()
+                races_data = await client.get_races_by_date('FM', today)
+                api_races = races_data.get('races', [])
+                
+                if api_races:
+                    # Convert API races to display format
+                    live_recommendations = []
+                    for race_info in api_races:
+                        live_recommendations.append({
+                            "race_number": race_info.get('race_number'),
+                            "race_time": race_info.get('post_time', '').replace('2025-06-05T', '').replace(' PM', ' PM').replace(' AM', ' AM'),
+                            "recommendations": [],  # No betting data available
+                            "has_results": False,
+                            "race_id": f"live_{race_info.get('race_number')}",
+                            "distance": race_info.get('distance'),
+                            "race_type": race_info.get('race_type'),
+                            "purse": race_info.get('purse'),
+                            "live_data": True
+                        })
+                    
+                    return {
+                        "recommendations": live_recommendations,
+                        "track_name": track_name,
+                        "date": today.strftime("%Y-%m-%d"),
+                        "message": f"Live data: {len(live_recommendations)} races today (sync pending)"
+                    }
+            except Exception as e:
+                pass  # Fall through to normal logic
+    
+    # Normal logic for other tracks or when Fair Meadows has data in DB
     races = db.query(Race).filter(
         Race.track_id == track_id,
         Race.race_date == today
