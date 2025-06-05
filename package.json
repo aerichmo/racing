@@ -1,0 +1,24 @@
+{
+  "name": "horse-racing-platform",
+  "version": "1.0.0",
+  "description": "A data-driven betting platform for horse racing that analyzes historical performance data to generate profitable betting recommendations.",
+  "main": "debug_site.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aerichmo/racing.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/aerichmo/racing/issues"
+  },
+  "homepage": "https://github.com/aerichmo/racing#readme",
+  "dependencies": {
+    "puppeteer": "^24.10.0"
+  }
+}
