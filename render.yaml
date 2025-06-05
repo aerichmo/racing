@@ -4,7 +4,7 @@ services:
     runtime: python
     buildCommand: "./render-build.sh"
     startCommand: "cd src && python main.py"
-    autoDeploy: false
+    autoDeploy: true
     envVars:
       - key: DATABASE_URL
         value: postgresql://mob1e_user:dU3nupu3FgdqClieo5JZWoZ2eL1KSMZB@dpg-d0lk5oogjchc73f5ieqg-a.oregon-postgres.render.com/mob1e
