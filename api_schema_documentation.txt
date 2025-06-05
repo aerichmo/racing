@@ -1,0 +1,195 @@
+API RESPONSE SCHEMAS
+================================================================================
+
+1. LIST MEETS ENDPOINT
+URL: https://api.theracingapi.com/v1/north-america/meets
+------------------------------------------------------------
+Response Type: <class 'list'>
+Number of meets: 25
+
+Sample meet structure:
+Keys: ['country', 'date', 'meet_id', 'track_id', 'track_name']
+Full sample meet:
+{
+  "country": "USA",
+  "date": "2025-06-12",
+  "meet_id": "DED_1749700800000",
+  "track_id": "DED",
+  "track_name": "Delta Downs"
+}
+
+Fair Meadows Tulsa meet:
+{
+  "country": "USA",
+  "date": "2025-06-11",
+  "meet_id": "FMT_1749614400000",
+  "track_id": "FMT",
+  "track_name": "Fair Meadows Tulsa"
+}
+
+
+2. MEET ENTRIES ENDPOINT
+URL: https://api.theracingapi.com/v1/north-america/meets/{meet_id}/entries
+------------------------------------------------------------
+Response Type: <class 'dict'>
+Top-level keys: ['meet_id', 'track_id', 'track_name', 'country', 'date', 'races', 'weather']
+Number of races: 8
+
+Sample race structure:
+Race keys: ['age_restriction', 'age_restriction_description', 'breed', 'changes', 'course_type', 'course_type_class', 'distance_description', 'distance_unit', 'distance_value', 'grade', 'handicapper_name', 'has_finished', 'has_results', 'is_cancelled', 'max_claim_price', 'min_claim_price', 'mtp', 'post_time', 'post_time_long', 'purse', 'race_class', 'race_key', 'race_name', 'race_pools', 'race_restriction', 'race_restriction_description', 'race_type', 'race_type_description', 'runners', 'sex_restriction', 'sex_restriction_description', 'surface_description', 'time_zone', 'tote_track_id', 'track_condition', 'track_name']
+
+Race details sample:
+{
+  "age_restriction": "3U",
+  "age_restriction_description": "3 Year Olds And Up",
+  "breed": "Thoroughbred",
+  "changes": [],
+  "course_type": "D",
+  "course_type_class": "D",
+  "distance_description": "4 Furlongs",
+  "distance_unit": "F",
+  "distance_value": 4,
+  "grade": "",
+  "handicapper_name": null,
+  "has_finished": false,
+  "has_results": false,
+  "is_cancelled": false,
+  "max_claim_price": 10000,
+  "min_claim_price": 10000,
+  "mtp": -95,
+  "post_time": "7:00 PM",
+  "post_time_long": "82800000",
+  "purse": 7700,
+  "race_class": "CLAIMING($10,000)",
+  "race_key": {
+    "race_number": "1",
+    "day_evening": "D"
+  },
+  "race_name": "",
+  "race_pools": null,
+  "race_restriction": "",
+  "race_restriction_description": null,
+  "race_type": "CLM",
+  "race_type_description": "CLAIMING",
+  "sex_restriction": "",
+  "sex_restriction_description": "Open",
+  "surface_description": "Dirt",
+  "time_zone": "C",
+  "tote_track_id": "FMN",
+  "track_condition": null,
+  "track_name": "Fair Meadows Tulsa"
+}
+
+Number of runners in race: 5
+
+Sample runner structure:
+Runner keys: ['claiming', 'coupled_type', 'dam_name', 'dam_sire_name', 'description', 'equipment', 'handicapper_name', 'horse_data_pools', 'horse_name', 'jockey', 'live_odds', 'medication', 'morning_line_odds', 'post_pos', 'program_number', 'program_number_stripped', 'registration_number', 'scratch_indicator', 'sire_name', 'trainer', 'weight']
+Full sample runner:
+{
+  "claiming": 10000,
+  "coupled_type": "",
+  "dam_name": "Smack Madam",
+  "dam_sire_name": "Victory Gallop",
+  "description": "",
+  "equipment": "",
+  "handicapper_name": null,
+  "horse_data_pools": null,
+  "horse_name": "Smackzilla",
+  "jockey": {
+    "id": "jky_na_362916",
+    "alias": "Cunningham T",
+    "first_name": "Travis",
+    "first_name_initial": "T",
+    "last_name": "Cunningham",
+    "middle_name": "",
+    "type": "JE"
+  },
+  "live_odds": null,
+  "medication": "L",
+  "morning_line_odds": "",
+  "post_pos": "1",
+  "program_number": "1",
+  "program_number_stripped": 1,
+  "registration_number": "20020926",
+  "scratch_indicator": "N",
+  "sire_name": "Successful Appeal",
+  "trainer": {
+    "id": "trn_na_8771850",
+    "alias": null,
+    "first_name": "Eusebio",
+    "first_name_initial": "E",
+    "last_name": "Rufino",
+    "middle_name": "Juarez",
+    "type": "TE"
+  },
+  "weight": "125"
+}
+
+Jockey structure:
+{
+  "id": "jky_na_362916",
+  "alias": "Cunningham T",
+  "first_name": "Travis",
+  "first_name_initial": "T",
+  "last_name": "Cunningham",
+  "middle_name": "",
+  "type": "JE"
+}
+
+Trainer structure:
+{
+  "id": "trn_na_8771850",
+  "alias": null,
+  "first_name": "Eusebio",
+  "first_name_initial": "E",
+  "last_name": "Rufino",
+  "middle_name": "Juarez",
+  "type": "TE"
+}
+
+
+3. MEET RESULTS ENDPOINT
+URL: https://api.theracingapi.com/v1/north-america/meets/{meet_id}/results
+------------------------------------------------------------
+Response Type: <class 'list'>
+No results available (races not yet finished)
+
+
+4. FIELD MAPPINGS FOR OUR APPLICATION
+------------------------------------------------------------
+
+    MEETS RESPONSE:
+    - track_id: Track identifier (e.g., 'FMT' for Fair Meadows Tulsa)
+    - track_name: Full track name (e.g., 'Fair Meadows Tulsa')
+    - meet_id: Unique meet identifier (e.g., 'FMT_1749614400000')
+    - date: Meet date (YYYY-MM-DD format)
+    - country: Country code ('USA')
+    
+    ENTRIES RESPONSE:
+    Race level:
+    - race_key.race_number: Race number (string, convert to int)
+    - post_time: Race post time (e.g., '7:00 PM')
+    - distance_description: Distance (e.g., '4 Furlongs')
+    - surface_description: Surface type (e.g., 'Dirt')
+    - race_type_description: Race type (e.g., 'CLAIMING')
+    - race_class: Race conditions/class
+    - purse: Race purse amount
+    
+    Runner level:
+    - horse_name: Horse name
+    - registration_number: Unique horse ID
+    - program_number: Post position (string, convert to int)
+    - weight: Jockey weight (string, convert to int)
+    - morning_line_odds: Morning line odds (string, convert to float)
+    - medication: Medication codes (e.g., 'L')
+    - equipment: Equipment codes (e.g., 'b', 'f')
+    - jockey.id: Jockey unique ID
+    - jockey.first_name_initial: Jockey first initial
+    - jockey.last_name: Jockey last name
+    - trainer.id: Trainer unique ID  
+    - trainer.first_name: Trainer first name
+    - trainer.last_name: Trainer last name
+    
+    RESULTS RESPONSE:
+    TBD - Need to see actual race results when available
+    

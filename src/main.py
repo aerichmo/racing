@@ -95,11 +95,29 @@ async def get_tracks(db: Session = Depends(get_db)):
 async def get_recommendations(track_id: int, db: Session = Depends(get_db)):
     today = date.today()
     
+    # Get track info
+    track = db.query(Track).filter(Track.id == track_id).first()
+    track_name = track.name if track else "Unknown Track"
+    
     # Get races for the track today
     races = db.query(Race).filter(
         Race.track_id == track_id,
         Race.race_date == today
     ).order_by(Race.race_time).all()
+    
+    # If no races today, check for upcoming races
+    message = None
+    if not races:
+        # Find next race date for this track
+        next_race = db.query(Race).filter(
+            Race.track_id == track_id,
+            Race.race_date > today
+        ).order_by(Race.race_date).first()
+        
+        if next_race:
+            message = f"Next races scheduled for {next_race.race_date.strftime('%B %d, %Y')}"
+        else:
+            message = f"No races scheduled for {track_name}"
     
     recommendations = []
     daily_budget = 100.0
@@ -131,8 +149,17 @@ async def get_recommendations(track_id: int, db: Session = Depends(get_db)):
             "has_results": has_results,
             "race_id": race.id
         })
+    
+    response = {
+        "recommendations": recommendations,
+        "track_name": track_name,
+        "date": today.strftime("%Y-%m-%d")
+    }
+    
+    if message:
+        response["message"] = message
         
-    return recommendations
+    return response
 
 @app.get("/api/race-results/{race_id}")
 async def get_race_results(race_id: int, db: Session = Depends(get_db)):
