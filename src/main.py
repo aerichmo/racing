@@ -210,6 +210,44 @@ async def trigger_manual_sync(db: Session = Depends(get_db)):
         return {"status": f"Manual sync failed: {str(e)}"}
 
 
+@app.get("/api/debug/races")
+async def debug_races(db: Session = Depends(get_db)):
+    """Debug - show all races in database"""
+    today = date.today()
+    
+    all_races = db.query(Race).all()
+    today_races = db.query(Race).filter(Race.race_date == today).all()
+    
+    return {
+        "today": today.strftime('%Y-%m-%d'),
+        "total_races_in_db": len(all_races),
+        "races_today": len(today_races),
+        "today_races_detail": [
+            {
+                "id": race.id,
+                "api_id": race.api_id,
+                "track_id": race.track_id,
+                "race_number": race.race_number,
+                "race_date": race.race_date.strftime('%Y-%m-%d'),
+                "race_time": race.race_time.strftime('%H:%M:%S'),
+                "distance": race.distance,
+                "surface": race.surface,
+                "race_type": race.race_type,
+                "purse": race.purse
+            } for race in today_races
+        ],
+        "all_races_detail": [
+            {
+                "id": race.id,
+                "api_id": race.api_id,
+                "track_id": race.track_id,
+                "race_number": race.race_number,
+                "race_date": race.race_date.strftime('%Y-%m-%d') if race.race_date else None,
+                "track_name": race.track.name if race.track else "Unknown"
+            } for race in all_races[-10:]  # Last 10 races
+        ]
+    }
+
 @app.post("/api/cleanup/races")
 async def cleanup_races(db: Session = Depends(get_db)):
     """Delete all race data for today"""
