@@ -78,17 +78,6 @@ async def get_recommendations(track_id: int, db: Session = Depends(get_db)):
         Race.race_date == today
     ).order_by(Race.race_time).all()
     
-    # If no races found and this is Fair Meadows, check if user reported live races
-    if len(races) == 0 and track_id == 2:
-        track = db.query(Track).filter(Track.id == track_id).first()
-        if track and track.name == "Fair Meadows":
-            return {
-                "message": "Racing API has no data for Fair Meadows today, but user reported live races at track",
-                "recommendations": [],
-                "track_name": track.name,
-                "date": today.strftime('%Y-%m-%d'),
-                "api_status": "No data available - possible live event not in API"
-            }
     
     recommendations = []
     daily_budget = 100.0

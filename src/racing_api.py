@@ -38,15 +38,19 @@ class RacingAPIClient:
         
         async with httpx.AsyncClient() as client:
             # First, get list of meets to find the meet_id for this track/date
+            target_date = race_date.strftime('%Y-%m-%d')
             meets_response = await client.get(
                 f"{self.base_url}/v1/north-america/meets",
-                headers=self.auth_header
+                headers=self.auth_header,
+                params={
+                    'start_date': target_date,
+                    'end_date': target_date
+                }
             )
             meets_response.raise_for_status()
             meets_data = meets_response.json()
             
             # Find the meet for our track and date
-            target_date = race_date.strftime('%Y-%m-%d')
             meet_id = None
             
             for meet in meets_data.get('meets', []):
@@ -89,15 +93,19 @@ class RacingAPIClient:
         async with httpx.AsyncClient() as client:
             try:
                 # First, get list of meets to find the meet_id for this track/date
+                target_date = race_date.strftime('%Y-%m-%d')
                 meets_response = await client.get(
                     f"{self.base_url}/v1/north-america/meets",
-                    headers=self.auth_header
+                    headers=self.auth_header,
+                    params={
+                        'start_date': target_date,
+                        'end_date': target_date
+                    }
                 )
                 meets_response.raise_for_status()
                 meets_data = meets_response.json()
                 
                 # Find the meet for our track and date
-                target_date = race_date.strftime('%Y-%m-%d')
                 meet_id = None
                 
                 for meet in meets_data.get('meets', []):
