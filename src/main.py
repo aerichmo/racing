@@ -206,6 +206,14 @@ async def trigger_pre_race_sync(db: Session = Depends(get_db)):
     await scheduler.run_pre_race_sync()
     return {"status": "Pre-race sync completed"}
 
+@app.post("/api/sync/force-fair-meadows")
+async def force_sync_fair_meadows(db: Session = Depends(get_db)):
+    """Force sync Fair Meadows races immediately"""
+    from data_sync import DataSync
+    sync = DataSync()
+    await sync.sync_initial_data(db)
+    return {"status": "Fair Meadows sync completed"}
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))

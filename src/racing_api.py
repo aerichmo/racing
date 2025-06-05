@@ -29,28 +29,49 @@ class RacingAPIClient:
             return response.json()
     
     async def get_races_by_date(self, track_code: str, race_date: date):
+        # Map internal track codes to API track codes
+        track_map = {
+            'FM': 'FMT',  # Fair Meadows -> Fair Meadows Tulsa
+            'RP': 'RP'    # Remington Park stays the same
+        }
+        api_track_code = track_map.get(track_code, track_code)
+        
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                f"{self.base_url}/v1/races/{track_code}/{race_date.strftime('%Y-%m-%d')}",
+                f"{self.base_url}/v1/north-america/meets/{api_track_code}/{race_date.strftime('%Y-%m-%d')}",
                 headers=self.auth_header
             )
             response.raise_for_status()
             return response.json()
     
     async def get_race_entries(self, track_code: str, race_date: date, race_number: int):
+        # Map internal track codes to API track codes
+        track_map = {
+            'FM': 'FMT',  # Fair Meadows -> Fair Meadows Tulsa
+            'RP': 'RP'    # Remington Park stays the same
+        }
+        api_track_code = track_map.get(track_code, track_code)
+        
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                f"{self.base_url}/v1/entries/{track_code}/{race_date.strftime('%Y-%m-%d')}/{race_number}",
+                f"{self.base_url}/v1/north-america/entries/{api_track_code}/{race_date.strftime('%Y-%m-%d')}/{race_number}",
                 headers=self.auth_header
             )
             response.raise_for_status()
             return response.json()
     
     async def get_race_results(self, track_code: str, race_date: date, race_number: int):
+        # Map internal track codes to API track codes
+        track_map = {
+            'FM': 'FMT',  # Fair Meadows -> Fair Meadows Tulsa
+            'RP': 'RP'    # Remington Park stays the same
+        }
+        api_track_code = track_map.get(track_code, track_code)
+        
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.get(
-                    f"{self.base_url}/v1/results/{track_code}/{race_date.strftime('%Y-%m-%d')}/{race_number}",
+                    f"{self.base_url}/v1/north-america/results/{api_track_code}/{race_date.strftime('%Y-%m-%d')}/{race_number}",
                     headers=self.auth_header
                 )
                 response.raise_for_status()
