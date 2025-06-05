@@ -256,6 +256,7 @@
     <div class="sync-buttons">
         <button class="sync-btn" onclick="triggerSync('initial')">Manual Initial Sync</button>
         <button class="sync-btn" onclick="triggerSync('pre-race')">Manual Pre-Race Sync</button>
+        <button class="sync-btn" onclick="triggerFairMeadowsSync()">Fair Meadows Sync</button>
     </div>
     
     <script>
@@ -435,6 +436,30 @@
             } finally {
                 button.disabled = false;
                 button.textContent = type === 'initial' ? 'Manual Initial Sync' : 'Manual Pre-Race Sync';
+            }
+        }
+        
+        async function triggerFairMeadowsSync() {
+            const button = event.target;
+            button.disabled = true;
+            button.textContent = 'Syncing Fair Meadows...';
+            
+            try {
+                const response = await fetch('/api/sync/force-fair-meadows', {
+                    method: 'POST'
+                });
+                const result = await response.json();
+                alert(result.status);
+                
+                if (currentTrackId) {
+                    await loadRecommendations();
+                }
+            } catch (error) {
+                console.error('Error triggering Fair Meadows sync:', error);
+                alert('Error triggering Fair Meadows sync');
+            } finally {
+                button.disabled = false;
+                button.textContent = 'Fair Meadows Sync';
             }
         }
     </script>
