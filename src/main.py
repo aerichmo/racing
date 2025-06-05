@@ -9,9 +9,8 @@ from typing import List, Dict
 from pathlib import Path
 from contextlib import asynccontextmanager
 
-from database import get_db, Base, get_engine, Track, Race, Bet, BetResult, DailyROI, RaceEntry, RaceResult
+from database import get_db, Base, get_engine, Track, Race
 from scheduler import RaceScheduler
-from betting_engine import BettingEngine
 import os
 
 # Get the base directory (parent of src)
@@ -102,88 +101,7 @@ async def get_races(track_id: int, db: Session = Depends(get_db)):
         
     return race_list
 
-@app.get("/api/race-results/{race_id}")
-async def get_race_results(race_id: int, db: Session = Depends(get_db)):
-    race = db.query(Race).filter(Race.id == race_id).first()
-    if not race:
-        raise HTTPException(status_code=404, detail="Race not found")
-        
-    results = []
-    entries = db.query(RaceEntry).filter(RaceEntry.race_id == race_id).all()
-    
-    for entry in entries:
-        if entry.result:
-            # Check if we bet on this horse
-            bet = db.query(Bet).filter(
-                Bet.race_id == race_id,
-                Bet.entry_id == entry.id
-            ).first()
-            
-            results.append({
-                "position": entry.result.finish_position,
-                "horse_name": entry.horse.name,
-                "win_odds": entry.result.win_odds,
-                "we_bet": bet is not None,
-                "bet_amount": bet.amount if bet else 0,
-                "payout": bet.result.payout if bet and hasattr(bet, 'result') and bet.result else 0
-            })
-            
-    results.sort(key=lambda x: x["position"])
-    return results
 
-@app.get("/api/roi/{track_id}")
-async def get_roi_stats(track_id: int, db: Session = Depends(get_db)):
-    today = date.today()
-    
-    # Get expected ROI for today
-    races = db.query(Race).filter(
-        Race.track_id == track_id,
-        Race.race_date == today
-    ).all()
-    
-    if races:
-        engine = BettingEngine(db)
-        all_recommendations = []
-        
-        for race in races:
-            bets = db.query(Bet).filter(Bet.race_id == race.id).all()
-            race_recs = [{
-                'bet_amount': bet.amount,
-                'expected_value': bet.expected_value
-            } for bet in bets]
-            all_recommendations.append(race_recs)
-            
-        expected_roi = engine.calculate_expected_daily_roi(all_recommendations)
-    else:
-        expected_roi = 0
-        
-    # Get all-time ROI
-    all_time_results = db.query(
-        func.sum(DailyROI.total_wagered).label('total_wagered'),
-        func.sum(DailyROI.total_returned).label('total_returned')
-    ).filter(DailyROI.track_id == track_id).first()
-    
-    if all_time_results and all_time_results.total_wagered and all_time_results.total_wagered > 0:
-        all_time_roi = ((all_time_results.total_returned - all_time_results.total_wagered) 
-                       / all_time_results.total_wagered) * 100
-    else:
-        all_time_roi = 0
-        
-    # Get recent daily ROIs
-    recent_rois = db.query(DailyROI).filter(
-        DailyROI.track_id == track_id
-    ).order_by(DailyROI.date.desc()).limit(10).all()
-    
-    return {
-        "expected_roi_today": round(expected_roi, 2),
-        "all_time_roi": round(all_time_roi, 2),
-        "recent_daily_rois": [
-            {
-                "date": roi.date.strftime("%m/%d"),
-                "roi": round(roi.roi_percentage, 2)
-            } for roi in recent_rois
-        ]
-    }
 
 @app.post("/api/sync/manual")
 async def trigger_manual_sync(db: Session = Depends(get_db)):
@@ -313,18 +231,6 @@ async def debug_races(db: Session = Depends(get_db)):
         ]
     }
 
-@app.post("/api/cleanup/races")
-async def cleanup_races(db: Session = Depends(get_db)):
-    """Delete all race data for today"""
-    today = date.today()
-    
-    # Delete in proper order due to foreign key constraints
-    db.query(Bet).filter(Race.race_date == today).delete(synchronize_session=False)
-    db.query(RaceEntry).filter(Race.race_date == today).delete(synchronize_session=False) 
-    db.query(Race).filter(Race.race_date == today).delete(synchronize_session=False)
-    
-    db.commit()
-    return {"status": f"Deleted all race data for {today}"}
 
 if __name__ == "__main__":
     import uvicorn

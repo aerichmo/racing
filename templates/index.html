@@ -265,19 +265,6 @@
             <button class="track-btn" onclick="selectTrack(2, 'Fair Meadows')">Fair Meadows</button>
         </div>
         
-        <div id="roi-stats" class="roi-stats" style="display: none;">
-            <h2>ROI Statistics - <span id="track-name"></span></h2>
-            <div class="roi-grid">
-                <div class="roi-item">
-                    <div class="roi-label">Expected ROI Today</div>
-                    <div class="roi-value" id="expected-roi">-</div>
-                </div>
-                <div class="roi-item">
-                    <div class="roi-label">All-Time ROI</div>
-                    <div class="roi-value" id="all-time-roi">-</div>
-                </div>
-            </div>
-        </div>
         
         <div id="recommendations-container">
             <div class="loading">Select a track to view recommendations</div>
@@ -301,11 +288,7 @@
             });
             event.target.classList.add('active');
             
-            document.getElementById('track-name').textContent = trackName;
-            document.getElementById('roi-stats').style.display = 'block';
-            
             // Load data
-            await loadROIStats();
             await loadRecommendations();
             
             // Set up auto-refresh every 30 seconds
@@ -317,23 +300,6 @@
             }, 30000);
         }
         
-        async function loadROIStats() {
-            try {
-                const response = await fetch(`/api/roi/${currentTrackId}`);
-                const data = await response.json();
-                
-                const expectedROI = document.getElementById('expected-roi');
-                const allTimeROI = document.getElementById('all-time-roi');
-                
-                expectedROI.textContent = `${data.expected_roi_today}%`;
-                expectedROI.className = `roi-value ${data.expected_roi_today >= 0 ? 'roi-positive' : 'roi-negative'}`;
-                
-                allTimeROI.textContent = `${data.all_time_roi}%`;
-                allTimeROI.className = `roi-value ${data.all_time_roi >= 0 ? 'roi-positive' : 'roi-negative'}`;
-            } catch (error) {
-                console.error('Error loading ROI stats:', error);
-            }
-        }
         
         async function loadRecommendations() {
             const container = document.getElementById('recommendations-container');
@@ -375,48 +341,7 @@
             }
         }
         
-        async function loadRaceResults(raceId) {
-            try {
-                const response = await fetch(`/api/race-results/${raceId}`);
-                const results = await response.json();
-                
-                const resultsSection = document.getElementById(`results-${raceId}`);
-                
-                resultsSection.innerHTML = `
-                    <div class="results-title">Race Results</div>
-                    <table class="recommendations-table">
-                        <thead>
-                            <tr>
-                                <th>Position</th>
-                                <th>Horse</th>
-                                <th>Win Odds</th>
-                                <th>Our Bet</th>
-                                <th>Payout</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${results.map(result => `
-                                <tr class="${result.we_bet ? (result.payout > 0 ? 'result-win' : 'result-loss') : ''}">
-                                    <td>${result.position}</td>
-                                    <td class="horse-name">${result.horse_name}</td>
-                                    <td>${result.win_odds}:1</td>
-                                    <td>${result.we_bet ? `$${result.bet_amount}` : '-'}</td>
-                                    <td>${result.we_bet ? `$${result.payout.toFixed(2)}` : '-'}</td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                `;
-            } catch (error) {
-                console.error('Error loading race results:', error);
-            }
-        }
         
-        function getConfidenceClass(confidence) {
-            if (confidence >= 80) return 'confidence-high';
-            if (confidence >= 60) return 'confidence-medium';
-            return 'confidence-low';
-        }
         
         async function triggerManualSync() {
             const button = event.target;
