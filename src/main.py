@@ -214,13 +214,25 @@ async def trigger_manual_sync(db: Session = Depends(get_db)):
         races_data = await api_client.get_races_by_date("FM", today)
         
         races_synced = 0
-        for race_info in races_data.get('races', []):
+        debug_info = []
+        
+        for i, race_info in enumerate(races_data.get('races', [])):
             # Extract race key and number
             race_key = race_info.get('race_key', '')
+            debug_info.append(f"Race {i}: race_key={race_key}, type={type(race_key)}")
+            
             if not race_key:
                 continue
                 
-            race_number = int(race_key.replace('R', '')) if race_key.startswith('R') else 1
+            # Handle race_key that might be a dict or other type
+            if isinstance(race_key, dict):
+                race_number = i + 1  # Fallback to index
+                race_key = f"R{race_number}"
+            elif isinstance(race_key, str) and race_key.startswith('R'):
+                race_number = int(race_key.replace('R', ''))
+            else:
+                race_number = i + 1
+                race_key = f"R{race_number}"
             
             # Check if already exists
             existing = db.query(Race).filter(
@@ -255,7 +267,11 @@ async def trigger_manual_sync(db: Session = Depends(get_db)):
                 races_synced += 1
         
         db.commit()
-        return {"status": f"Manual sync completed - {races_synced} races synced for Fair Meadows"}
+        return {
+            "status": f"Manual sync completed - {races_synced} races synced for Fair Meadows",
+            "debug": debug_info,
+            "total_api_races": len(races_data.get('races', []))
+        }
         
     except Exception as e:
         import traceback
