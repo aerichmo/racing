@@ -214,6 +214,19 @@ async def force_sync_fair_meadows(db: Session = Depends(get_db)):
     await sync.sync_initial_data(db)
     return {"status": "Fair Meadows sync completed"}
 
+@app.post("/api/cleanup/races")
+async def cleanup_races(db: Session = Depends(get_db)):
+    """Delete all race data for today"""
+    today = date.today()
+    
+    # Delete in proper order due to foreign key constraints
+    db.query(Bet).filter(Race.race_date == today).delete(synchronize_session=False)
+    db.query(RaceEntry).filter(Race.race_date == today).delete(synchronize_session=False) 
+    db.query(Race).filter(Race.race_date == today).delete(synchronize_session=False)
+    
+    db.commit()
+    return {"status": f"Deleted all race data for {today}"}
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))

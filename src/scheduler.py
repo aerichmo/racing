@@ -34,6 +34,14 @@ class RaceScheduler:
             replace_existing=True
         )
         
+        # Schedule cleanup at 11 PM daily
+        self.scheduler.add_job(
+            self.cleanup_daily_data,
+            CronTrigger(hour=23, minute=0),
+            id='daily_cleanup',
+            replace_existing=True
+        )
+        
         self.scheduler.start()
         logger.info("Scheduler initialized")
         
@@ -232,6 +240,25 @@ class RaceScheduler:
                         
             db.commit()
             logger.info("Daily results processed successfully")
+            
+        finally:
+            db.close()
+    
+    async def cleanup_daily_data(self):
+        """Clean up race data at 11 PM daily"""
+        logger.info("Starting daily cleanup at 11 PM")
+        
+        db = next(get_db())
+        try:
+            today = date.today()
+            
+            # Delete in proper order due to foreign key constraints
+            deleted_bets = db.query(Bet).join(Race).filter(Race.race_date == today).delete(synchronize_session=False)
+            deleted_entries = db.query(RaceEntry).join(Race).filter(Race.race_date == today).delete(synchronize_session=False)
+            deleted_races = db.query(Race).filter(Race.race_date == today).delete(synchronize_session=False)
+            
+            db.commit()
+            logger.info(f"Cleanup completed: {deleted_races} races, {deleted_entries} entries, {deleted_bets} bets deleted")
             
         finally:
             db.close()
