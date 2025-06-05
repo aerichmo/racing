@@ -214,7 +214,13 @@ async def trigger_manual_sync(db: Session = Depends(get_db)):
         races_data = await api_client.get_races_by_date("FM", today)
         
         races_synced = 0
-        debug_info = []
+        debug_info = [f"API response keys: {list(races_data.keys()) if races_data else 'None'}"]
+        debug_info.append(f"Races in response: {len(races_data.get('races', []))} if races_data else 0")
+        
+        if races_data and 'races' in races_data:
+            debug_info.append(f"First race sample: {races_data['races'][0] if races_data['races'] else 'No races'}")
+        else:
+            debug_info.append(f"Full API response: {races_data}")
         
         for i, race_info in enumerate(races_data.get('races', [])):
             # Extract race key and number
