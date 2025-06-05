@@ -25,9 +25,7 @@ def get_engine():
         if not DATABASE_URL:
             raise ValueError(
                 "DATABASE_URL environment variable is not set. "
-                "Please set it in your Render dashboard under Environment Variables. "
-                "Go to your service settings and add DATABASE_URL with value: "
-                "postgresql://mob1e_user:dU3nupu3FgdqClieo5JZWoZ2eL1KSMZB@dpg-d0lk5oogjchc73f5ieqg-a.oregon-postgres.render.com/mob1e"
+                "Please set it in your Render dashboard under Environment Variables."
             )
         engine = create_engine(DATABASE_URL)
     return engine
