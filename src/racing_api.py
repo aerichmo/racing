@@ -38,7 +38,7 @@ class RacingAPIClient:
         
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                f"{self.base_url}/v1/north-america/meets/{api_track_code}/{race_date.strftime('%Y-%m-%d')}",
+                f"{self.base_url}/v1/meets/{api_track_code}/{race_date.strftime('%Y-%m-%d')}",
                 headers=self.auth_header
             )
             response.raise_for_status()
@@ -54,7 +54,7 @@ class RacingAPIClient:
         
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                f"{self.base_url}/v1/north-america/entries/{api_track_code}/{race_date.strftime('%Y-%m-%d')}/{race_number}",
+                f"{self.base_url}/v1/entries/{api_track_code}/{race_date.strftime('%Y-%m-%d')}/{race_number}",
                 headers=self.auth_header
             )
             response.raise_for_status()
@@ -71,7 +71,7 @@ class RacingAPIClient:
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.get(
-                    f"{self.base_url}/v1/north-america/results/{api_track_code}/{race_date.strftime('%Y-%m-%d')}/{race_number}",
+                    f"{self.base_url}/v1/results/{api_track_code}/{race_date.strftime('%Y-%m-%d')}/{race_number}",
                     headers=self.auth_header
                 )
                 response.raise_for_status()
