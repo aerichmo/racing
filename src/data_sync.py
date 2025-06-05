@@ -17,7 +17,7 @@ class DataSync:
         self.api_client = RacingAPIClient()
         self.track_codes = {
             "Remington Park": "RP",
-            "Fair Meadows": "FM"
+            "Fair Meadows Tulsa": "FM"  # FM maps to FMT in the API
         }
         
     async def sync_initial_data(self, db: Session):

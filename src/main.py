@@ -12,7 +12,6 @@ from contextlib import asynccontextmanager
 from database import get_db, Base, get_engine, Track, Race, Bet, BetResult, DailyROI, RaceEntry, RaceResult
 from scheduler import RaceScheduler
 from betting_engine import BettingEngine
-from data_sync_fallback import DataSyncFallback
 import os
 
 # Get the base directory (parent of src)
@@ -57,7 +56,7 @@ async def lifespan(app: FastAPI):
     try:
         tracks = [
             {"name": "Remington Park", "code": "RP"},
-            {"name": "Fair Meadows", "code": "FM"}
+            {"name": "Fair Meadows Tulsa", "code": "FM"}  # FM maps to FMT in API
         ]
         
         for track_data in tracks:
@@ -229,42 +228,6 @@ async def trigger_pre_race_sync(db: Session = Depends(get_db)):
     """Manual trigger for pre-race sync"""
     await scheduler.run_pre_race_sync()
     return {"status": "Pre-race sync completed"}
-
-@app.post("/api/sync/fallback")
-async def trigger_fallback_sync(db: Session = Depends(get_db)):
-    """Manual trigger for fallback sync when API is down"""
-    sync = DataSyncFallback()
-    await sync.sync_initial_data(db)
-    
-    # Run betting engine to generate recommendations
-    engine = BettingEngine(db)
-    today = date.today()
-    
-    # Get all races for today
-    races = db.query(Race).filter(Race.race_date == today).all()
-    
-    bets_created = 0
-    for race in races:
-        # Analyze race and create bet recommendations
-        recommendations = await engine.analyze_race(race)
-        
-        # Create bet records
-        for rec in recommendations:
-            bet = Bet(
-                race_id=race.id,
-                entry_id=rec['entry_id'],
-                bet_type=rec['bet_type'],
-                amount=rec['bet_amount'],
-                odds=rec['current_odds'],
-                confidence=rec['confidence'],
-                expected_value=rec['expected_value']
-            )
-            db.add(bet)
-            bets_created += 1
-    
-    db.commit()
-    
-    return {"status": "Fallback sync completed", "races_created": len(races), "bets_created": bets_created}
 
 if __name__ == "__main__":
     import uvicorn

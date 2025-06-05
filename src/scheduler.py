@@ -6,7 +6,6 @@ import asyncio
 from sqlalchemy.orm import Session
 from database import get_db, Race, Bet, BetResult, DailyROI, Track
 from data_sync import DataSync
-from data_sync_fallback import DataSyncFallback
 from betting_engine import BettingEngine
 import logging
 
@@ -42,16 +41,10 @@ class RaceScheduler:
         logger.info("Running 8 AM initial sync")
         db = next(get_db())
         try:
-            # Try regular sync first
-            try:
-                await self.data_sync.sync_initial_data(db)
-            except Exception as e:
-                logger.error(f"API sync failed: {e}")
-                logger.info("Using fallback sync")
-                fallback_sync = DataSyncFallback()
-                await fallback_sync.sync_initial_data(db)
-                
+            await self.data_sync.sync_initial_data(db)
             await self.schedule_race_syncs()
+        except Exception as e:
+            logger.error(f"Initial sync failed: {e}")
         finally:
             db.close()
             
