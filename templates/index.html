@@ -265,6 +265,19 @@
             <button class="track-btn" onclick="selectTrack(2, 'Fair Meadows')">Fair Meadows</button>
         </div>
         
+        <div id="roi-stats" class="roi-stats" style="display: none;">
+            <h2>ROI Statistics - <span id="track-name"></span></h2>
+            <div class="roi-grid">
+                <div class="roi-item">
+                    <div class="roi-label">Expected ROI Today</div>
+                    <div class="roi-value" id="expected-roi">-</div>
+                </div>
+                <div class="roi-item">
+                    <div class="roi-label">All-Time ROI</div>
+                    <div class="roi-value" id="all-time-roi">-</div>
+                </div>
+            </div>
+        </div>
         
         <div id="recommendations-container">
             <div class="loading">Select a track to view recommendations</div>
@@ -272,7 +285,8 @@
     </div>
     
     <div class="sync-buttons">
-        <button class="sync-btn" onclick="triggerManualSync()">Manual Sync</button>
+        <button class="sync-btn" onclick="triggerSync('initial')">Manual Initial Sync</button>
+        <button class="sync-btn" onclick="triggerSync('pre-race')">Manual Pre-Race Sync</button>
     </div>
     
     <script>
@@ -288,7 +302,11 @@
             });
             event.target.classList.add('active');
             
+            document.getElementById('track-name').textContent = trackName;
+            document.getElementById('roi-stats').style.display = 'block';
+            
             // Load data
+            await loadROIStats();
             await loadRecommendations();
             
             // Set up auto-refresh every 30 seconds
@@ -300,14 +318,43 @@
             }, 30000);
         }
         
+        async function loadROIStats() {
+            try {
+                const response = await fetch(`/api/roi/${currentTrackId}`);
+                const data = await response.json();
+                
+                const expectedROI = document.getElementById('expected-roi');
+                const allTimeROI = document.getElementById('all-time-roi');
+                
+                expectedROI.textContent = `${data.expected_roi_today}%`;
+                expectedROI.className = `roi-value ${data.expected_roi_today >= 0 ? 'roi-positive' : 'roi-negative'}`;
+                
+                allTimeROI.textContent = `${data.all_time_roi}%`;
+                allTimeROI.className = `roi-value ${data.all_time_roi >= 0 ? 'roi-positive' : 'roi-negative'}`;
+            } catch (error) {
+                console.error('Error loading ROI stats:', error);
+            }
+        }
         
         async function loadRecommendations() {
             const container = document.getElementById('recommendations-container');
-            container.innerHTML = '<div class="loading">Loading races...</div>';
+            container.innerHTML = '<div class="loading">Loading recommendations...</div>';
             
             try {
-                const response = await fetch(`/api/races/${currentTrackId}`);
-                const races = await response.json();
+                const response = await fetch(`/api/recommendations/${currentTrackId}`);
+                const data = await response.json();
+                
+                if (data.error) {
+                    container.innerHTML = `<div class="no-recommendations">Error: ${data.error}</div>`;
+                    return;
+                }
+                
+                if (data.message) {
+                    container.innerHTML = `<div class="no-recommendations">${data.message}</div>`;
+                    return;
+                }
+                
+                const races = data.recommendations || [];
                 
                 if (races.length === 0) {
                     container.innerHTML = '<div class="no-recommendations">No races scheduled for today</div>';
@@ -317,39 +364,106 @@
                 container.innerHTML = races.map(race => `
                     <div class="race-card">
                         <div class="race-header">
-                            <div class="race-title">${race.race_name}</div>
+                            <div class="race-title">Race ${race.race_number}</div>
                             <div class="race-time">${race.race_time}</div>
                         </div>
-                        <div class="race-details">
-                            <p><strong>Distance:</strong> ${race.distance}</p>
-                            <p><strong>Type:</strong> ${race.race_type}</p>
-                            <p><strong>Purse:</strong> ${race.purse}</p>
-                        </div>
-                        <div class="horses-section">
-                            <h4>Horses:</h4>
-                            ${race.horses.length > 0 ? 
-                                `<ul>${race.horses.map(horse => `<li>${horse}</li>`).join('')}</ul>` :
-                                '<p>No horse entries loaded yet</p>'
-                            }
-                        </div>
+                        ${race.recommendations.length > 0 ? `
+                            <table class="recommendations-table">
+                                <thead>
+                                    <tr>
+                                        <th>Horse</th>
+                                        <th>Post</th>
+                                        <th>Odds</th>
+                                        <th>Bet Amount</th>
+                                        <th>% of Budget</th>
+                                        <th>Confidence</th>
+                                        <th>Expected Value</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${race.recommendations.map(rec => `
+                                        <tr>
+                                            <td class="horse-name">${rec.horse_name}</td>
+                                            <td>${rec.post_position}</td>
+                                            <td>${rec.current_odds}:1</td>
+                                            <td class="bet-amount">$${rec.bet_amount}</td>
+                                            <td>${rec.percentage_of_budget}%</td>
+                                            <td class="${getConfidenceClass(rec.confidence)}">${rec.confidence}%</td>
+                                            <td>${rec.expected_value}x</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        ` : '<div class="no-recommendations">No recommendations for this race</div>'}
+                        ${race.has_results ? `
+                            <div class="results-section" id="results-${race.race_id}">
+                                <div class="loading">Loading results...</div>
+                            </div>
+                        ` : ''}
                     </div>
                 `).join('');
                 
+                // Load results for races that have them
+                races.filter(race => race.has_results).forEach(race => {
+                    loadRaceResults(race.race_id);
+                });
+                
             } catch (error) {
-                console.error('Error loading races:', error);
-                container.innerHTML = '<div class="no-recommendations">Error loading races</div>';
+                console.error('Error loading recommendations:', error);
+                container.innerHTML = '<div class="no-recommendations">Error loading recommendations</div>';
             }
         }
         
+        async function loadRaceResults(raceId) {
+            try {
+                const response = await fetch(`/api/race-results/${raceId}`);
+                const results = await response.json();
+                
+                const resultsSection = document.getElementById(`results-${raceId}`);
+                
+                resultsSection.innerHTML = `
+                    <div class="results-title">Race Results</div>
+                    <table class="recommendations-table">
+                        <thead>
+                            <tr>
+                                <th>Position</th>
+                                <th>Horse</th>
+                                <th>Win Odds</th>
+                                <th>Our Bet</th>
+                                <th>Payout</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${results.map(result => `
+                                <tr class="${result.we_bet ? (result.payout > 0 ? 'result-win' : 'result-loss') : ''}">
+                                    <td>${result.position}</td>
+                                    <td class="horse-name">${result.horse_name}</td>
+                                    <td>${result.win_odds}:1</td>
+                                    <td>${result.we_bet ? `$${result.bet_amount}` : '-'}</td>
+                                    <td>${result.we_bet ? `$${result.payout.toFixed(2)}` : '-'}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+            } catch (error) {
+                console.error('Error loading race results:', error);
+            }
+        }
         
+        function getConfidenceClass(confidence) {
+            if (confidence >= 80) return 'confidence-high';
+            if (confidence >= 60) return 'confidence-medium';
+            return 'confidence-low';
+        }
         
-        async function triggerManualSync() {
+        async function triggerSync(type) {
             const button = event.target;
             button.disabled = true;
             button.textContent = 'Syncing...';
             
             try {
-                const response = await fetch('/api/sync/manual', {
+                const response = await fetch(`/api/sync/${type}`, {
                     method: 'POST'
                 });
                 const result = await response.json();
@@ -359,11 +473,11 @@
                     await loadRecommendations();
                 }
             } catch (error) {
-                console.error('Error triggering manual sync:', error);
-                alert('Error triggering manual sync');
+                console.error('Error triggering sync:', error);
+                alert('Error triggering sync');
             } finally {
                 button.disabled = false;
-                button.textContent = 'Manual Sync';
+                button.textContent = type === 'initial' ? 'Manual Initial Sync' : 'Manual Pre-Race Sync';
             }
         }
         

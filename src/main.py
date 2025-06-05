@@ -9,8 +9,9 @@ from typing import List, Dict
 from pathlib import Path
 from contextlib import asynccontextmanager
 
-from database import get_db, Base, get_engine, Track, Race
+from database import get_db, Base, get_engine, Track, Race, Bet, BetResult, DailyROI, RaceEntry, RaceResult
 from scheduler import RaceScheduler
+from betting_engine import BettingEngine
 import os
 
 # Get the base directory (parent of src)
@@ -101,7 +102,161 @@ async def get_races(track_id: int, db: Session = Depends(get_db)):
         
     return race_list
 
+@app.get("/api/recommendations/{track_id}")
+async def get_recommendations(track_id: int, db: Session = Depends(get_db)):
+    try:
+        today = date.today()
+        
+        # Check if track exists
+        track = db.query(Track).filter(Track.id == track_id).first()
+        if not track:
+            return {"error": "Track not found", "recommendations": []}
+        
+        # Get races for the track today
+        races = db.query(Race).filter(
+            Race.track_id == track_id,
+            Race.race_date == today
+        ).order_by(Race.race_time).all()
+        
+        if not races:
+            return {
+                "message": f"No races scheduled for {track.name} today",
+                "recommendations": [],
+                "track_name": track.name,
+                "date": today.strftime("%Y-%m-%d")
+            }
+        
+        recommendations = []
+        daily_budget = 100.0
+        
+        for race in races:
+            # Get bets for this race
+            bets = db.query(Bet).filter(Bet.race_id == race.id).all()
+            
+            race_recommendations = []
+            for bet in bets:
+                entry = bet.entry
+                if entry and entry.horse:  # Ensure entry and horse exist
+                    race_recommendations.append({
+                        "horse_name": entry.horse.name,
+                        "post_position": entry.post_position,
+                        "current_odds": bet.odds,
+                        "bet_amount": bet.amount,
+                        "confidence": round(bet.confidence * 100, 1),
+                        "expected_value": round(bet.expected_value, 2),
+                        "percentage_of_budget": round((bet.amount / daily_budget) * 100, 1)
+                    })
+                
+            # Check if race has results
+            has_results = any(entry.result for entry in race.entries if entry)
+            
+            recommendations.append({
+                "race_number": race.race_number,
+                "race_time": race.race_time.strftime("%I:%M %p"),
+                "recommendations": race_recommendations,
+                "has_results": has_results,
+                "race_id": race.id
+            })
+            
+        return {"recommendations": recommendations, "track_name": track.name}
+    except Exception as e:
+        print(f"Error in get_recommendations: {e}")
+        return {"error": str(e), "recommendations": []}
 
+@app.get("/api/race-results/{race_id}")
+async def get_race_results(race_id: int, db: Session = Depends(get_db)):
+    race = db.query(Race).filter(Race.id == race_id).first()
+    if not race:
+        raise HTTPException(status_code=404, detail="Race not found")
+        
+    results = []
+    entries = db.query(RaceEntry).filter(RaceEntry.race_id == race_id).all()
+    
+    for entry in entries:
+        if entry.result:
+            # Check if we bet on this horse
+            bet = db.query(Bet).filter(
+                Bet.race_id == race_id,
+                Bet.entry_id == entry.id
+            ).first()
+            
+            results.append({
+                "position": entry.result.finish_position,
+                "horse_name": entry.horse.name,
+                "win_odds": entry.result.win_odds,
+                "we_bet": bet is not None,
+                "bet_amount": bet.amount if bet else 0,
+                "payout": bet.result.payout if bet and hasattr(bet, 'result') and bet.result else 0
+            })
+            
+    results.sort(key=lambda x: x["position"])
+    return results
+
+@app.get("/api/roi/{track_id}")
+async def get_roi_stats(track_id: int, db: Session = Depends(get_db)):
+    today = date.today()
+    
+    # Get expected ROI for today
+    races = db.query(Race).filter(
+        Race.track_id == track_id,
+        Race.race_date == today
+    ).all()
+    
+    if races:
+        engine = BettingEngine(db)
+        all_recommendations = []
+        
+        for race in races:
+            bets = db.query(Bet).filter(Bet.race_id == race.id).all()
+            race_recs = [{
+                'bet_amount': bet.amount,
+                'expected_value': bet.expected_value
+            } for bet in bets]
+            all_recommendations.append(race_recs)
+            
+        expected_roi = engine.calculate_expected_daily_roi(all_recommendations)
+    else:
+        expected_roi = 0
+        
+    # Get all-time ROI
+    all_time_results = db.query(
+        func.sum(DailyROI.total_wagered).label('total_wagered'),
+        func.sum(DailyROI.total_returned).label('total_returned')
+    ).filter(DailyROI.track_id == track_id).first()
+    
+    if all_time_results and all_time_results.total_wagered and all_time_results.total_wagered > 0:
+        all_time_roi = ((all_time_results.total_returned - all_time_results.total_wagered) 
+                       / all_time_results.total_wagered) * 100
+    else:
+        all_time_roi = 0
+        
+    # Get recent daily ROIs
+    recent_rois = db.query(DailyROI).filter(
+        DailyROI.track_id == track_id
+    ).order_by(DailyROI.date.desc()).limit(10).all()
+    
+    return {
+        "expected_roi_today": round(expected_roi, 2),
+        "all_time_roi": round(all_time_roi, 2),
+        "recent_daily_rois": [
+            {
+                "date": roi.date.strftime("%m/%d"),
+                "roi": round(roi.roi_percentage, 2)
+            } for roi in recent_rois
+        ]
+    }
+
+@app.post("/api/sync/initial")
+async def trigger_initial_sync(db: Session = Depends(get_db)):
+    """Manual trigger for initial sync"""
+    await scheduler.run_initial_sync()
+    return {"status": "Initial sync completed"}
+
+@app.post("/api/sync/pre-race")
+async def trigger_pre_race_sync(db: Session = Depends(get_db)):
+    """Manual trigger for pre-race sync"""
+    await scheduler.run_pre_race_sync()
+    return {"status": "Pre-race sync completed"}
 
 @app.post("/api/sync/manual")
 async def trigger_manual_sync(db: Session = Depends(get_db)):
@@ -113,79 +268,92 @@ async def trigger_manual_sync(db: Session = Depends(get_db)):
         api_client = RacingAPIClient()
         today = date.today()
         
-        # Get Fair Meadows track
-        track = db.query(Track).filter(Track.name == "Fair Meadows").first()
-        if not track:
-            return {"status": "Fair Meadows track not found in database"}
+        # Get both tracks
+        tracks = [
+            {"name": "Remington Park", "code": "RP"},
+            {"name": "Fair Meadows", "code": "FM"}
+        ]
         
-        # Get races directly from API
-        races_data = await api_client.get_races_by_date("FM", today)
+        total_races_synced = 0
+        debug_info = []
         
-        races_synced = 0
-        debug_info = [f"API response keys: {list(races_data.keys()) if races_data else 'None'}"]
-        debug_info.append(f"Races in response: {len(races_data.get('races', []))} if races_data else 0")
-        
-        if races_data and 'races' in races_data:
-            debug_info.append(f"First race sample: {races_data['races'][0] if races_data['races'] else 'No races'}")
-        else:
-            debug_info.append(f"Full API response: {races_data}")
-        
-        for i, race_info in enumerate(races_data.get('races', [])):
-            # Extract race key and number
-            race_key = race_info.get('race_key', '')
-            debug_info.append(f"Race {i}: race_key={race_key}, type={type(race_key)}")
-            
-            if not race_key:
+        for track_data in tracks:
+            track = db.query(Track).filter(Track.name == track_data["name"]).first()
+            if not track:
+                debug_info.append(f"{track_data['name']} track not found in database")
                 continue
-                
-            # Handle race_key that might be a dict or other type
-            if isinstance(race_key, dict):
-                race_number = int(race_key.get('race_number', i + 1))
-                race_key = f"R{race_number}"
-            elif isinstance(race_key, str) and race_key.startswith('R'):
-                race_number = int(race_key.replace('R', ''))
+            
+            # Get races directly from API
+            races_data = await api_client.get_races_by_date(track_data["code"], today)
+            
+            races_synced = 0
+            track_debug = [f"{track_data['name']} - API response keys: {list(races_data.keys()) if races_data else 'None'}"]
+            track_debug.append(f"{track_data['name']} - Races in response: {len(races_data.get('races', []))} if races_data else 0")
+            
+            if races_data and 'races' in races_data:
+                track_debug.append(f"{track_data['name']} - First race sample: {races_data['races'][0] if races_data['races'] else 'No races'}")
             else:
-                race_number = i + 1
-                race_key = f"R{race_number}"
+                track_debug.append(f"{track_data['name']} - Full API response: {races_data}")
             
-            # Check if already exists
-            existing = db.query(Race).filter(
-                Race.api_id == race_key,
-                Race.track_id == track.id
-            ).first()
-            
-            if not existing:
-                # Parse post time
-                post_time_str = race_info.get('post_time', '')
-                if post_time_str:
-                    try:
-                        race_time = datetime.fromisoformat(post_time_str.replace('Z', '+00:00'))
-                    except:
-                        race_time = datetime.now()
-                else:
-                    race_time = datetime.now()
+            for i, race_info in enumerate(races_data.get('races', [])):
+                # Extract race key and number
+                race_key = race_info.get('race_key', '')
+                track_debug.append(f"{track_data['name']} Race {i}: race_key={race_key}, type={type(race_key)}")
                 
-                race = Race(
-                    api_id=race_key,
-                    track_id=track.id,
-                    race_number=race_number,
-                    race_date=today,
-                    race_time=race_time,
-                    distance=race_info.get('distance_value', 0),
-                    surface=race_info.get('surface_description', ''),
-                    race_type=race_info.get('race_type', ''),
-                    purse=race_info.get('purse', 0),
-                    conditions=race_info.get('race_restriction_description', ''),
-                    track_name=track.name
-                )
-                db.add(race)
-                races_synced += 1
+                if not race_key:
+                    continue
+                    
+                # Handle race_key that might be a dict or other type
+                if isinstance(race_key, dict):
+                    race_number = int(race_key.get('race_number', i + 1))
+                    race_key = f"R{race_number}"
+                elif isinstance(race_key, str) and race_key.startswith('R'):
+                    race_number = int(race_key.replace('R', ''))
+                else:
+                    race_number = i + 1
+                    race_key = f"R{race_number}"
+                
+                # Check if already exists
+                existing = db.query(Race).filter(
+                    Race.api_id == race_key,
+                    Race.track_id == track.id
+                ).first()
+                
+                if not existing:
+                    # Parse post time
+                    post_time_str = race_info.get('post_time', '')
+                    if post_time_str:
+                        try:
+                            race_time = datetime.fromisoformat(post_time_str.replace('Z', '+00:00'))
+                        except:
+                            race_time = datetime.now()
+                    else:
+                        race_time = datetime.now()
+                    
+                    race = Race(
+                        api_id=race_key,
+                        track_id=track.id,
+                        race_number=race_number,
+                        race_date=today,
+                        race_time=race_time,
+                        distance=race_info.get('distance_value', 0),
+                        surface=race_info.get('surface_description', ''),
+                        race_type=race_info.get('race_type', ''),
+                        purse=race_info.get('purse', 0),
+                        conditions=race_info.get('race_restriction_description', ''),
+                        track_name=track.name
+                    )
+                    db.add(race)
+                    races_synced += 1
+            
+            debug_info.extend(track_debug)
+            total_races_synced += races_synced
         
         db.commit()
         return {
-            "status": f"Manual sync completed - {races_synced} races synced for Fair Meadows",
+            "status": f"Manual sync completed - {total_races_synced} races synced across all tracks",
             "debug": debug_info,
-            "total_api_races": len(races_data.get('races', []))
+            "total_api_races": total_races_synced
         }
         
     except Exception as e:
