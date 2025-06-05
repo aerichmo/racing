@@ -214,6 +214,51 @@ async def force_sync_fair_meadows(db: Session = Depends(get_db)):
     await sync.sync_initial_data(db)
     return {"status": "Fair Meadows sync completed"}
 
+@app.post("/api/manual/add-live-races")
+async def add_live_races(db: Session = Depends(get_db)):
+    """Manually add live races when API fails"""
+    today = date.today()
+    
+    # Get Fair Meadows track
+    track = db.query(Track).filter(Track.name == "Fair Meadows").first()
+    if not track:
+        raise HTTPException(status_code=404, detail="Fair Meadows track not found")
+    
+    # Delete existing races for today
+    db.query(Race).filter(Race.track_id == track.id, Race.race_date == today).delete()
+    
+    # Add 8 live races based on user's observation
+    race_times = [
+        "19:00:00",  # 7:00 PM
+        "19:30:00",  # 7:30 PM  
+        "20:00:00",  # 8:00 PM
+        "20:30:00",  # 8:30 PM
+        "21:00:00",  # 9:00 PM
+        "21:30:00",  # 9:30 PM
+        "22:00:00",  # 10:00 PM
+        "22:30:00"   # 10:30 PM
+    ]
+    
+    for i, time_str in enumerate(race_times, 1):
+        race_time = datetime.strptime(f"{today} {time_str}", "%Y-%m-%d %H:%M:%S")
+        
+        race = Race(
+            api_id=f"live_fm_{today}_{i}",
+            track_id=track.id,
+            race_number=i,
+            race_date=today,
+            race_time=race_time,
+            distance="6 Furlongs",  # Default distance
+            surface="Dirt",
+            race_type="ALLOWANCE",
+            purse=15000,
+            conditions="Live Race - Manual Entry"
+        )
+        db.add(race)
+    
+    db.commit()
+    return {"status": f"Added 8 live races for Fair Meadows on {today}"}
+
 @app.post("/api/cleanup/races")
 async def cleanup_races(db: Session = Depends(get_db)):
     """Delete all race data for today"""
