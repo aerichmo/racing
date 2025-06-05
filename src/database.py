@@ -81,6 +81,7 @@ class Race(Base):
     race_type = Column(String)
     purse = Column(Float)
     conditions = Column(Text)
+    track_name = Column(String)
     
     track = relationship("Track")
     entries = relationship("RaceEntry", back_populates="race")

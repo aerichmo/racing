@@ -261,7 +261,8 @@ async def trigger_manual_sync(db: Session = Depends(get_db)):
                     surface=race_info.get('surface_description', ''),
                     race_type=race_info.get('race_type', ''),
                     purse=race_info.get('purse', 0),
-                    conditions=race_info.get('race_restriction_description', '')
+                    conditions=race_info.get('race_restriction_description', ''),
+                    track_name=track.name
                 )
                 db.add(race)
                 races_synced += 1

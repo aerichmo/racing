@@ -142,6 +142,10 @@ class DataSync:
             else:
                 race_time = datetime.now()
             
+            # Get track name
+            track = db.query(Track).filter(Track.id == track_id).first()
+            track_name = track.name if track else ""
+            
             race = Race(
                 api_id=race_info.get('race_key', ''),
                 track_id=track_id,
@@ -152,7 +156,8 @@ class DataSync:
                 surface=race_info.get('surface_description', ''),
                 race_type=race_info.get('race_type', ''),
                 purse=race_info.get('purse', 0),
-                conditions=race_info.get('race_restriction_description', '')
+                conditions=race_info.get('race_restriction_description', ''),
+                track_name=track_name
             )
             db.add(race)
             
