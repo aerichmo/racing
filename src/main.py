@@ -456,6 +456,36 @@ async def trigger_sync(db: Session = Depends(get_db)):
         }
 
 
+@app.post("/api/sync-entries")
+async def sync_race_entries(db: Session = Depends(get_db)):
+    """Sync entries (horses, jockeys, trainers) for existing races"""
+    try:
+        from data_sync import DataSync
+        
+        sync = DataSync()
+        await sync.sync_pre_race_data(db)
+        
+        # Count entries added
+        today = date.today()
+        entry_count = db.query(RaceEntry).join(Race).filter(
+            Race.race_date == today
+        ).count()
+        
+        return {
+            "status": "Entry sync completed",
+            "entries_count": entry_count,
+            "message": f"Synced entries for today's races"
+        }
+        
+    except Exception as e:
+        import traceback
+        return {
+            "status": "Entry sync failed",
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
+
 @app.get("/api/debug/races")
 async def debug_races(db: Session = Depends(get_db)):
     """Debug - show all races in database"""

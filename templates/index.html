@@ -286,7 +286,8 @@
     
     <div class="sync-buttons">
         <button class="sync-btn" onclick="testAPI()">🧪 Test API</button>
-        <button class="sync-btn" onclick="triggerSync()">🔄 Manual Sync</button>
+        <button class="sync-btn" onclick="triggerSync()">🔄 Sync Races</button>
+        <button class="sync-btn" onclick="syncEntries()">🐴 Sync Entries</button>
     </div>
     
     <script>
@@ -529,6 +530,45 @@
                     errorMsg += 'Unknown error occurred';
                 }
                 alert(errorMsg);
+            } finally {
+                button.disabled = false;
+                button.textContent = originalText;
+            }
+        }
+        
+        async function syncEntries() {
+            const button = event.target;
+            const originalText = button.textContent;
+            button.disabled = true;
+            button.textContent = '🐴 Syncing...';
+            
+            try {
+                console.log('Starting entry sync...');
+                const response = await fetch('/api/sync-entries', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                console.log('Response status:', response.status);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const result = await response.json();
+                console.log('Entry sync result:', result);
+                
+                alert(`Entry Sync Result:\n${result.status}\nEntries synced: ${result.entries_count || 0}`);
+                
+                // Reload recommendations if a track is selected
+                if (currentTrackId) {
+                    await loadRecommendations();
+                }
+            } catch (error) {
+                console.error('Error syncing entries:', error);
+                alert(`Error syncing entries: ${error.message}`);
             } finally {
                 button.disabled = false;
                 button.textContent = originalText;

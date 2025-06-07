@@ -103,13 +103,29 @@ class RacingAPIClient:
         # We'll get all meet entries and filter for the specific race
         race_data = await self.get_races_by_date(track_code, race_date)
         
-        # Filter entries for the specific race number
-        race_entries = []
-        for entry in race_data.get('entries', []):
-            if entry.get('race_number') == race_number:
-                race_entries.append(entry)
-        
-        return {"entries": race_entries}
+        # Handle both 'entries' and 'races' formats
+        if 'races' in race_data and 'entries' not in race_data:
+            # For 'races' format, find the specific race and get its entries
+            for race in race_data.get('races', []):
+                # Extract race number from race_key if needed
+                race_key = race.get('race_key', {})
+                if isinstance(race_key, dict):
+                    race_num = race_key.get('race_number')
+                else:
+                    race_num = race.get('race_number')
+                
+                if race_num == race_number:
+                    return {"entries": race.get('entries', [])}
+            
+            return {"entries": []}  # No matching race found
+        else:
+            # For 'entries' format, filter by race number
+            race_entries = []
+            for entry in race_data.get('entries', []):
+                if entry.get('race_number') == race_number:
+                    race_entries.append(entry)
+            
+            return {"entries": race_entries}
     
     async def get_race_results(self, track_code: str, race_date: date, race_number: int):
         # Map internal track codes to API track codes with fallbacks
