@@ -569,6 +569,7 @@ async def debug_race_entries(race_number: int):
             "entries_count": len(entries_data.get('entries', [])),
             "entries": entries_data.get('entries', [])[:2],  # First 2 entries for inspection
             "first_entry_keys": list(entries_data['entries'][0].keys()) if entries_data.get('entries') else [],
+            "debug": entries_data.get('debug', []),
             "date": today.strftime("%Y-%m-%d")
         }
         

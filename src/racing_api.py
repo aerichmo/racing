@@ -106,7 +106,8 @@ class RacingAPIClient:
         # Handle both 'entries' and 'races' formats
         if 'races' in race_data and 'entries' not in race_data:
             # For 'races' format, find the specific race and get its entries
-            for race in race_data.get('races', []):
+            debug_info = []
+            for i, race in enumerate(race_data.get('races', [])):
                 # Extract race number from race_key if needed
                 race_key = race.get('race_key', {})
                 if isinstance(race_key, dict):
@@ -114,12 +115,15 @@ class RacingAPIClient:
                 else:
                     race_num = race.get('race_number')
                 
+                debug_info.append(f"Race {i+1}: race_num={race_num}, looking_for={race_number}")
+                
                 if race_num == race_number:
                     # Fair Meadows uses 'runners' instead of 'entries'
                     entries = race.get('entries', []) or race.get('runners', [])
-                    return {"entries": entries}
+                    debug_info.append(f"MATCH! Found {len(entries)} entries/runners")
+                    return {"entries": entries, "debug": debug_info}
             
-            return {"entries": []}  # No matching race found
+            return {"entries": [], "debug": debug_info}  # No matching race found
         else:
             # For 'entries' format, filter by race number
             race_entries = []
