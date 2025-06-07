@@ -269,6 +269,21 @@
             text-align: center;
             margin-top: 20px;
         }
+        
+        .high-confidence {
+            color: #27ae60;
+            font-weight: bold;
+        }
+        
+        .medium-confidence {
+            color: #f39c12;
+            font-weight: bold;
+        }
+        
+        .low-confidence {
+            color: #e74c3c;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -299,6 +314,25 @@
         <div id="recommendations-container">
             <div class="loading">Select a track to view recommendations</div>
         </div>
+        
+        <div id="performance-metrics" class="roi-stats" style="display: none; margin-top: 30px;">
+            <h2>Performance Metrics - Last 30 Days</h2>
+            <div class="roi-grid">
+                <div class="roi-item">
+                    <div class="roi-label">Win Rate</div>
+                    <div class="roi-value" id="win-rate">-</div>
+                </div>
+                <div class="roi-item">
+                    <div class="roi-label">Net Profit/Loss</div>
+                    <div class="roi-value" id="net-profit">-</div>
+                </div>
+                <div class="roi-item">
+                    <div class="roi-label">High Conf Win %</div>
+                    <div class="roi-value" id="high-conf-win">-</div>
+                </div>
+            </div>
+            <div id="confidence-breakdown" style="margin-top: 20px;"></div>
+        </div>
     </div>
     
     <div class="sync-button">
@@ -322,32 +356,64 @@
             setInterval(checkScheduledRefresh, 60000);
         }
         
-        function checkScheduledRefresh() {
+        async function checkScheduledRefresh() {
             const now = new Date();
             const hour = now.getHours();
             const minute = now.getMinutes();
             
-            // Check for scheduled refresh times
+            // Only two scheduled refresh times:
+            // 1. 8 AM daily sync for upcoming day
+            // 2. 5 minutes before each race
             const shouldRefresh = 
-                (hour === 8 && minute === 0) ||  // 8 AM
-                isOneHourBeforeFirstRace() ||     // 1 hour before first race
-                isTenMinutesBeforeRace();         // 10 minutes before each race
+                (hour === 8 && minute === 0) ||  // 8 AM daily sync
+                await isFiveMinutesBeforeAnyRace();     // 5 minutes before each race
             
             if (shouldRefresh && currentTrackId) {
-                console.log('Scheduled refresh triggered');
+                if (hour === 8 && minute === 0) {
+                    console.log('Daily 8 AM sync triggered for upcoming day');
+                } else {
+                    console.log('5-minute pre-race sync triggered');
+                }
                 performAutoSync();
             }
         }
         
-        function isOneHourBeforeFirstRace() {
-            // This would need race schedule data - simplified for now
-            // In practice, check if current time is 1 hour before first race
-            return false;
-        }
-        
-        function isTenMinutesBeforeRace() {
-            // This would need race schedule data - simplified for now  
-            // In practice, check if current time is 10 minutes before any race
+        async function isFiveMinutesBeforeAnyRace() {
+            // Check if we're within 1 minute of being 5 minutes before any race
+            // (i.e., check if it's 4-6 minutes before any race)
+            
+            try {
+                const response = await fetch(`/api/recommendations/${currentTrackId}`);
+                const data = await response.json();
+                
+                if (data.recommendations) {
+                    const now = new Date();
+                    
+                    for (const race of data.recommendations) {
+                        // Parse race time (assuming format like "2:30 PM")
+                        const raceTimeStr = race.race_time;
+                        const today = new Date();
+                        const [time, period] = raceTimeStr.split(' ');
+                        let [hours, minutes] = time.split(':').map(Number);
+                        
+                        if (period === 'PM' && hours !== 12) hours += 12;
+                        if (period === 'AM' && hours === 12) hours = 0;
+                        
+                        const raceTime = new Date(today.getFullYear(), today.getMonth(), today.getDate(), hours, minutes);
+                        
+                        // Check if we're 4-6 minutes before this race
+                        const timeDiff = (raceTime - now) / (1000 * 60); // minutes
+                        
+                        if (timeDiff >= 4 && timeDiff <= 6) {
+                            console.log(`5-minute sync triggered for race at ${raceTimeStr} (${timeDiff.toFixed(1)} minutes to post)`);
+                            return true;
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error checking race times:', error);
+            }
+            
             return false;
         }
         
@@ -366,6 +432,7 @@
             // Load data
             await loadROIStats();
             await loadRecommendations();
+            await loadPerformanceMetrics();
             
             // Clear any existing refresh interval
             if (refreshInterval) {
@@ -555,10 +622,11 @@
                 if (currentTrackId) {
                     await loadRecommendations();
                     await loadROIStats();
+                    await loadPerformanceMetrics();
                 }
                 
                 // Show success message
-                const message = `Sync completed successfully!\nEntries synced: ${entryResult.entries_count || 0}`;
+                const message = `Sync completed successfully!\nEntries synced: ${entryResult.entries_count || 0}\nResults processed: ${entryResult.results_processed || 0}`;
                 alert(message);
                 
             } catch (error) {
@@ -594,6 +662,7 @@
                 if (currentTrackId) {
                     await loadRecommendations();
                     await loadROIStats();
+                    await loadPerformanceMetrics();
                 }
                 
                 console.log('Auto-sync completed');
@@ -609,6 +678,65 @@
                 element.textContent = `Last sync: ${lastSyncTime.toLocaleTimeString()}`;
             } else {
                 element.textContent = 'Never synced';
+            }
+        }
+        
+        
+        async function loadPerformanceMetrics() {
+            if (!currentTrackId) return;
+            
+            try {
+                const response = await fetch(`/api/performance/${currentTrackId}?days=30`);
+                const data = await response.json();
+                
+                // Update overall stats
+                const winRate = data.overall_stats.total_bets > 0 
+                    ? ((data.confidence_performance.reduce((sum, c) => sum + c.winning_bets, 0) / data.overall_stats.total_bets) * 100).toFixed(1)
+                    : 0;
+                
+                document.getElementById('win-rate').textContent = `${winRate}%`;
+                document.getElementById('win-rate').className = `roi-value ${winRate >= 30 ? 'roi-positive' : 'roi-negative'}`;
+                
+                document.getElementById('net-profit').textContent = `$${data.overall_stats.net_profit}`;
+                document.getElementById('net-profit').className = `roi-value ${data.overall_stats.net_profit >= 0 ? 'roi-positive' : 'roi-negative'}`;
+                
+                // High confidence win rate
+                const highConf = data.confidence_performance.find(c => c.level === 'High');
+                if (highConf) {
+                    document.getElementById('high-conf-win').textContent = `${highConf.win_rate.toFixed(1)}%`;
+                    document.getElementById('high-conf-win').className = `roi-value ${highConf.win_rate >= 40 ? 'roi-positive' : 'roi-negative'}`;
+                }
+                
+                // Confidence breakdown
+                const breakdownHtml = `
+                    <h4>Win Rate by Confidence Level</h4>
+                    <table class="recommendations-table" style="margin-top: 10px;">
+                        <thead>
+                            <tr>
+                                <th>Confidence</th>
+                                <th>Total Bets</th>
+                                <th>Winners</th>
+                                <th>Win Rate</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${data.confidence_performance.map(conf => `
+                                <tr>
+                                    <td class="${conf.level.toLowerCase()}-confidence">${conf.level}</td>
+                                    <td>${conf.total_bets}</td>
+                                    <td>${conf.winning_bets}</td>
+                                    <td class="${conf.win_rate >= 30 ? 'roi-positive' : 'roi-negative'}">${conf.win_rate.toFixed(1)}%</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+                
+                document.getElementById('confidence-breakdown').innerHTML = breakdownHtml;
+                document.getElementById('performance-metrics').style.display = 'block';
+                
+            } catch (error) {
+                console.error('Error loading performance metrics:', error);
             }
         }
         

@@ -154,6 +154,7 @@ class Bet(Base):
     
     race = relationship("Race")
     entry = relationship("RaceEntry")
+    result = relationship("BetResult", uselist=False, back_populates="bet")
     
 class BetResult(Base):
     __tablename__ = "bet_results"
@@ -164,7 +165,7 @@ class BetResult(Base):
     payout = Column(Float)
     processed_at = Column(DateTime, server_default=func.now())
     
-    bet = relationship("Bet")
+    bet = relationship("Bet", back_populates="result")
     
 class DailyROI(Base):
     __tablename__ = "daily_roi"
