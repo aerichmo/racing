@@ -299,9 +299,23 @@ async def trigger_sync(db: Session = Depends(get_db)):
                 if races and not entries:
                     # 'races' format - extract entries from each race
                     debug_info.append(f"📋 {track_data['name']}: {len(races)} races returned (races format)")
+                    
+                    # Debug: show first race structure
+                    if races:
+                        first_race = races[0]
+                        debug_info.append(f"🔍 First race keys: {list(first_race.keys())}")
+                        
                     races_by_number = {}
-                    for race in races:
-                        race_num = race.get('race_number')
+                    for i, race in enumerate(races):
+                        # Try multiple possible race number fields
+                        race_num = (race.get('race_number') or 
+                                   race.get('raceNumber') or 
+                                   race.get('number') or 
+                                   race.get('race_id') or
+                                   i + 1)  # fallback to index + 1
+                        
+                        debug_info.append(f"🏇 Race {i+1}: race_num={race_num}, keys={list(race.keys())[:5]}")
+                        
                         if race_num:
                             races_by_number[race_num] = race
                 else:
