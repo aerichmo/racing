@@ -292,19 +292,30 @@ async def trigger_sync(db: Session = Depends(get_db)):
                 if 'debug' in races_data:
                     debug_info.append(f"🔍 {track_data['name']} API debug: {races_data['debug']}")
                 
+                # Handle both 'entries' and 'races' response formats
                 entries = races_data.get('entries', [])
-                debug_info.append(f"📋 {track_data['name']}: {len(entries)} entries returned")
+                races = races_data.get('races', [])
                 
-                if not entries:
-                    debug_info.append(f"⚠️ {track_data['name']}: No entries found")
-                    continue
-                
-                # Group entries by race_number to identify unique races
-                races_by_number = {}
-                for entry in entries:
-                    race_num = entry.get('race_number', 0)
-                    if race_num and race_num not in races_by_number:
-                        races_by_number[race_num] = entry
+                if races and not entries:
+                    # 'races' format - extract entries from each race
+                    debug_info.append(f"📋 {track_data['name']}: {len(races)} races returned (races format)")
+                    races_by_number = {}
+                    for race in races:
+                        race_num = race.get('race_number')
+                        if race_num:
+                            races_by_number[race_num] = race
+                else:
+                    # 'entries' format - group by race number
+                    debug_info.append(f"📋 {track_data['name']}: {len(entries)} entries returned (entries format)")
+                    if not entries:
+                        debug_info.append(f"⚠️ {track_data['name']}: No entries found")
+                        continue
+                    
+                    races_by_number = {}
+                    for entry in entries:
+                        race_num = entry.get('race_number', 0)
+                        if race_num and race_num not in races_by_number:
+                            races_by_number[race_num] = entry
                 
                 debug_info.append(f"🏇 {track_data['name']}: Found {len(races_by_number)} unique races: {list(races_by_number.keys())}")
                 
