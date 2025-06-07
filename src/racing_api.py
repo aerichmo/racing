@@ -115,9 +115,10 @@ class RacingAPIClient:
                 else:
                     race_num = race.get('race_number')
                 
-                debug_info.append(f"Race {i+1}: race_num={race_num}, looking_for={race_number}")
+                debug_info.append(f"Race {i+1}: race_num={race_num} (type: {type(race_num)}), looking_for={race_number} (type: {type(race_number)})")
                 
-                if race_num == race_number:
+                # Ensure both are the same type for comparison
+                if race_num is not None and int(race_num) == int(race_number):
                     # Fair Meadows uses 'runners' instead of 'entries'
                     entries = race.get('entries', []) or race.get('runners', [])
                     debug_info.append(f"MATCH! Found {len(entries)} entries/runners")
