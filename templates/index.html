@@ -285,8 +285,7 @@
     </div>
     
     <div class="sync-buttons">
-        <button class="sync-btn" onclick="triggerSync('initial')">Manual Initial Sync</button>
-        <button class="sync-btn" onclick="triggerSync('pre-race')">Manual Pre-Race Sync</button>
+        <button class="sync-btn" onclick="triggerSync()">🔄 Manual Sync</button>
     </div>
     
     <script>
@@ -457,27 +456,34 @@
             return 'confidence-low';
         }
         
-        async function triggerSync(type) {
+        async function triggerSync() {
             const button = event.target;
             button.disabled = true;
-            button.textContent = 'Syncing...';
+            button.textContent = '🔄 Syncing...';
             
             try {
-                const response = await fetch(`/api/sync/${type}`, {
+                const response = await fetch('/api/sync', {
                     method: 'POST'
                 });
                 const result = await response.json();
-                alert(result.status);
+                
+                // Show detailed debug info
+                let message = `${result.status}\n\nDebug Info:\n`;
+                if (result.debug) {
+                    message += result.debug.join('\n');
+                }
+                
+                alert(message);
                 
                 if (currentTrackId) {
                     await loadRecommendations();
                 }
             } catch (error) {
                 console.error('Error triggering sync:', error);
-                alert('Error triggering sync');
+                alert('Error triggering sync: ' + error.message);
             } finally {
                 button.disabled = false;
-                button.textContent = type === 'initial' ? 'Manual Initial Sync' : 'Manual Pre-Race Sync';
+                button.textContent = '🔄 Manual Sync';
             }
         }
         

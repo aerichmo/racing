@@ -246,24 +246,12 @@ async def get_roi_stats(track_id: int, db: Session = Depends(get_db)):
         ]
     }
 
-@app.post("/api/sync/initial")
-async def trigger_initial_sync(db: Session = Depends(get_db)):
-    """Manual trigger for initial sync"""
-    await scheduler.run_initial_sync()
-    return {"status": "Initial sync completed"}
-
-@app.post("/api/sync/pre-race")
-async def trigger_pre_race_sync(db: Session = Depends(get_db)):
-    """Manual trigger for pre-race sync"""
-    await scheduler.run_pre_race_sync()
-    return {"status": "Pre-race sync completed"}
-
-@app.post("/api/sync/manual")
-async def trigger_manual_sync(db: Session = Depends(get_db)):
-    """Manual sync - simplified direct approach"""
+@app.post("/api/sync")
+async def trigger_sync(db: Session = Depends(get_db)):
+    """Comprehensive manual sync with detailed debugging"""
     try:
-        from data_sync import DataSync
         from racing_api import RacingAPIClient
+        import traceback
         
         api_client = RacingAPIClient()
         today = date.today()
@@ -275,49 +263,61 @@ async def trigger_manual_sync(db: Session = Depends(get_db)):
         ]
         
         total_races_synced = 0
-        debug_info = []
+        debug_info = [f"Starting sync for date: {today}"]
         
         for track_data in tracks:
             track = db.query(Track).filter(Track.name == track_data["name"]).first()
             if not track:
-                debug_info.append(f"{track_data['name']} track not found in database")
+                debug_info.append(f"❌ {track_data['name']} track not found in database")
                 continue
             
-            # Get races directly from API
-            races_data = await api_client.get_races_by_date(track_data["code"], today)
+            debug_info.append(f"🏁 Processing {track_data['name']} (code: {track_data['code']} -> API)")
             
-            races_synced = 0
-            track_debug = [f"{track_data['name']} - API response keys: {list(races_data.keys()) if races_data else 'None'}"]
-            track_debug.append(f"{track_data['name']} - Entries in response: {len(races_data.get('entries', [])) if races_data else 0}")
-            
-            # Add more detailed logging for Fair Meadows
-            if track_data["name"] == "Fair Meadows":
-                if races_data and 'debug' in races_data:
-                    track_debug.append(f"Fair Meadows debug info: {races_data['debug']}")
-                elif races_data:
-                    track_debug.append(f"Fair Meadows API response sample: {str(races_data)[:200]}")
-            
-            # Group entries by race_number to identify unique races
-            races_by_number = {}
-            for entry in races_data.get('entries', []):
-                race_num = entry.get('race_number', 0)
-                if race_num not in races_by_number:
-                    races_by_number[race_num] = entry
-            
-            track_debug.append(f"{track_data['name']} - Unique races found: {len(races_by_number)}")
-            
-            for race_number, race_info in races_by_number.items():
-                # Use race_number as the key since entries don't have race_key
-                race_key = f"R{race_number}"
-                track_debug.append(f"{track_data['name']} Race {race_number}: Creating race_key={race_key}")
+            try:
+                # Get races directly from API
+                races_data = await api_client.get_races_by_date(track_data["code"], today)
                 
-                # Check if already exists
-                existing = db.query(Race).filter(
-                    Race.api_id == race_key,
-                    Race.track_id == track.id
-                ).first()
+                if races_data is None:
+                    debug_info.append(f"❌ {track_data['name']}: API returned None")
+                    continue
                 
-                if not existing:
+                debug_info.append(f"📡 {track_data['name']} API response keys: {list(races_data.keys())}")
+                
+                # Check for debug info in response
+                if 'debug' in races_data:
+                    debug_info.append(f"🔍 {track_data['name']} API debug: {races_data['debug']}")
+                
+                entries = races_data.get('entries', [])
+                debug_info.append(f"📋 {track_data['name']}: {len(entries)} entries returned")
+                
+                if not entries:
+                    debug_info.append(f"⚠️ {track_data['name']}: No entries found")
+                    continue
+                
+                # Group entries by race_number to identify unique races
+                races_by_number = {}
+                for entry in entries:
+                    race_num = entry.get('race_number', 0)
+                    if race_num and race_num not in races_by_number:
+                        races_by_number[race_num] = entry
+                
+                debug_info.append(f"🏇 {track_data['name']}: Found {len(races_by_number)} unique races: {list(races_by_number.keys())}")
+                
+                races_synced = 0
+                for race_number, race_info in races_by_number.items():
+                    race_key = f"R{race_number}"
+                    
+                    # Check if already exists
+                    existing = db.query(Race).filter(
+                        Race.api_id == race_key,
+                        Race.track_id == track.id,
+                        Race.race_date == today
+                    ).first()
+                    
+                    if existing:
+                        debug_info.append(f"⏭️ {track_data['name']} Race {race_number}: Already exists")
+                        continue
+                    
                     # Parse post time
                     post_time_str = race_info.get('post_time', '')
                     if post_time_str:
@@ -342,20 +342,36 @@ async def trigger_manual_sync(db: Session = Depends(get_db)):
                     )
                     db.add(race)
                     races_synced += 1
-            
-            debug_info.extend(track_debug)
-            total_races_synced += races_synced
+                    debug_info.append(f"✅ {track_data['name']} Race {race_number}: Added to database")
+                
+                total_races_synced += races_synced
+                debug_info.append(f"🎯 {track_data['name']}: Synced {races_synced} new races")
+                
+            except Exception as track_error:
+                debug_info.append(f"❌ {track_data['name']} error: {str(track_error)}")
+                debug_info.append(f"🔍 {track_data['name']} traceback: {traceback.format_exc()}")
         
         db.commit()
+        
+        # Final status
+        status_msg = f"Sync completed: {total_races_synced} races synced"
+        if total_races_synced == 0:
+            status_msg += " ⚠️ No new races found"
+        
         return {
-            "status": f"Manual sync completed - {total_races_synced} races synced across all tracks",
+            "status": status_msg,
+            "races_synced": total_races_synced,
             "debug": debug_info,
-            "total_api_races": total_races_synced
+            "date": today.strftime("%Y-%m-%d")
         }
         
     except Exception as e:
         import traceback
-        return {"status": f"Manual sync failed: {str(e)}", "error": traceback.format_exc()}
+        return {
+            "status": f"Sync failed: {str(e)}",
+            "error": traceback.format_exc(),
+            "debug": debug_info if 'debug_info' in locals() else ["Error occurred before debug initialization"]
+        }
 
 
 @app.get("/api/debug/races")
