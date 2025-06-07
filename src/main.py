@@ -358,16 +358,43 @@ async def trigger_sync(db: Session = Depends(get_db)):
         
         db.commit()
         
-        # Final status
+        # Check for most recent racing day if no races today
+        last_race_info = {}
+        if total_races_synced == 0:
+            # Find the most recent race date for each track
+            for track_data in tracks:
+                track = db.query(Track).filter(Track.name == track_data["name"]).first()
+                if track:
+                    last_race = db.query(Race).filter(
+                        Race.track_id == track.id
+                    ).order_by(Race.race_date.desc()).first()
+                    
+                    if last_race:
+                        last_race_info[track_data["name"]] = {
+                            "last_race_date": last_race.race_date.strftime("%Y-%m-%d"),
+                            "races_that_day": db.query(Race).filter(
+                                Race.track_id == track.id,
+                                Race.race_date == last_race.race_date
+                            ).count()
+                        }
+        
+        # Final status with better explanation
         status_msg = f"Sync completed: {total_races_synced} races synced"
         if total_races_synced == 0:
-            status_msg += " ⚠️ No new races found"
+            status_msg += " ⚠️ No races scheduled for today"
+            if last_race_info:
+                debug_info.append("📅 Last racing days:")
+                for track_name, info in last_race_info.items():
+                    debug_info.append(f"   {track_name}: {info['last_race_date']} ({info['races_that_day']} races)")
+            
+            debug_info.append("💡 This is normal - not all tracks race every day")
         
         return {
             "status": status_msg,
             "races_synced": total_races_synced,
             "debug": debug_info,
-            "date": today.strftime("%Y-%m-%d")
+            "date": today.strftime("%Y-%m-%d"),
+            "last_race_info": last_race_info if total_races_synced == 0 else {}
         }
         
     except Exception as e:
