@@ -142,7 +142,6 @@ async def get_recommendations(track_id: int, db: Session = Depends(get_db)):
                         "horse_name": entry.horse.name,
                         "post_position": entry.post_position,
                         "current_odds": bet.odds,
-                        "bet_amount": bet.amount,
                         "confidence": round(bet.confidence * 100, 1),
                         "expected_value": round(bet.expected_value, 2),
                         "percentage_of_budget": round((bet.amount / daily_budget) * 100, 1)
@@ -186,7 +185,6 @@ async def get_race_results(race_id: int, db: Session = Depends(get_db)):
                 "horse_name": entry.horse.name,
                 "win_odds": entry.result.win_odds,
                 "we_bet": bet is not None,
-                "bet_amount": bet.amount if bet else 0,
                 "payout": bet.result.payout if bet and hasattr(bet, 'result') and bet.result else 0
             })
             

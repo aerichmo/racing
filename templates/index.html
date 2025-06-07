@@ -434,7 +434,6 @@
                                         <th>Horse</th>
                                         <th>Post</th>
                                         <th>Odds</th>
-                                        <th>Bet Amount</th>
                                         <th>% of Budget</th>
                                         <th>Confidence</th>
                                         <th>Expected Value</th>
@@ -446,7 +445,6 @@
                                             <td class="horse-name">${rec.horse_name}</td>
                                             <td>${rec.post_position}</td>
                                             <td>${rec.current_odds}:1</td>
-                                            <td class="bet-amount">$${rec.bet_amount}</td>
                                             <td>${rec.percentage_of_budget}%</td>
                                             <td class="${getConfidenceClass(rec.confidence)}">${rec.confidence}%</td>
                                             <td>${rec.expected_value}x</td>
@@ -489,8 +487,7 @@
                                 <th>Position</th>
                                 <th>Horse</th>
                                 <th>Win Odds</th>
-                                <th>Our Bet</th>
-                                <th>Payout</th>
+                                <th>Result</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -499,8 +496,7 @@
                                     <td>${result.position}</td>
                                     <td class="horse-name">${result.horse_name}</td>
                                     <td>${result.win_odds}:1</td>
-                                    <td>${result.we_bet ? `$${result.bet_amount}` : '-'}</td>
-                                    <td>${result.we_bet ? `$${result.payout.toFixed(2)}` : '-'}</td>
+                                    <td>${result.we_bet ? (result.payout > 0 ? 'WIN' : 'LOSS') : '-'}</td>
                                 </tr>
                             `).join('')}
                         </tbody>
