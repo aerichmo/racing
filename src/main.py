@@ -461,20 +461,54 @@ async def sync_race_entries(db: Session = Depends(get_db)):
     """Sync entries (horses, jockeys, trainers) for existing races"""
     try:
         from data_sync import DataSync
+        import traceback
         
+        debug_info = []
         sync = DataSync()
-        await sync.sync_pre_race_data(db)
         
-        # Count entries added
+        # Add timeout and chunking
         today = date.today()
-        entry_count = db.query(RaceEntry).join(Race).filter(
+        races = db.query(Race).filter(Race.race_date == today).all()
+        
+        debug_info.append(f"Found {len(races)} races to sync")
+        
+        synced_count = 0
+        
+        # Process races in chunks to avoid timeout
+        for i, race in enumerate(races[:5]):  # Limit to first 5 races
+            try:
+                debug_info.append(f"Processing race {race.race_number}...")
+                
+                # Sync entries for this race
+                entries_data = await sync.api_client.get_race_entries(
+                    'FM' if race.track_id == 2 else 'RP', 
+                    today, 
+                    race.race_number
+                )
+                
+                await sync._sync_entries(db, race.id, entries_data)
+                db.commit()
+                
+                # Count entries for this race
+                race_entries = db.query(RaceEntry).filter(RaceEntry.race_id == race.id).count()
+                debug_info.append(f"Race {race.race_number}: {race_entries} entries")
+                synced_count += race_entries
+                
+            except Exception as race_error:
+                debug_info.append(f"Race {race.race_number} failed: {str(race_error)}")
+                continue
+        
+        # Count total entries
+        total_entries = db.query(RaceEntry).join(Race).filter(
             Race.race_date == today
         ).count()
         
         return {
             "status": "Entry sync completed",
-            "entries_count": entry_count,
-            "message": f"Synced entries for today's races"
+            "entries_count": total_entries,
+            "entries_synced": synced_count,
+            "debug": debug_info,
+            "message": f"Synced {synced_count} new entries, {total_entries} total entries for today"
         }
         
     except Exception as e:
@@ -482,7 +516,8 @@ async def sync_race_entries(db: Session = Depends(get_db)):
         return {
             "status": "Entry sync failed",
             "error": str(e),
-            "traceback": traceback.format_exc()
+            "traceback": traceback.format_exc(),
+            "debug": debug_info if 'debug_info' in locals() else []
         }
 
 
@@ -581,6 +616,73 @@ async def debug_race_entries(race_number: int):
         }
 
 
+@app.post("/api/generate-sample-bets")
+async def generate_sample_bets(db: Session = Depends(get_db)):
+    """Generate sample betting data for testing recommendations"""
+    try:
+        today = date.today()
+        
+        # Get races with entries
+        races_with_entries = db.query(Race).join(RaceEntry).filter(
+            Race.race_date == today
+        ).distinct().all()
+        
+        if not races_with_entries:
+            return {
+                "status": "No races with entries found",
+                "message": "Need to sync race entries first"
+            }
+        
+        generated_bets = 0
+        
+        for race in races_with_entries[:5]:  # Process first 5 races
+            entries = db.query(RaceEntry).filter(RaceEntry.race_id == race.id).all()
+            
+            # Create bets for top 2-3 entries based on odds
+            sorted_entries = sorted(entries, key=lambda x: x.morning_line_odds or 999)[:3]
+            
+            for i, entry in enumerate(sorted_entries):
+                # Check if bet already exists
+                existing_bet = db.query(Bet).filter(
+                    Bet.race_id == race.id,
+                    Bet.entry_id == entry.id
+                ).first()
+                
+                if not existing_bet:
+                    # Generate realistic betting data
+                    confidence = 0.8 - (i * 0.1)  # 80%, 70%, 60%
+                    expected_value = 1.25 - (i * 0.05)  # 1.25, 1.20, 1.15
+                    bet_amount = 20.0 - (i * 5.0)  # $20, $15, $10
+                    
+                    bet = Bet(
+                        race_id=race.id,
+                        entry_id=entry.id,
+                        bet_type='WIN',
+                        amount=bet_amount,
+                        odds=entry.morning_line_odds,
+                        confidence=confidence,
+                        expected_value=expected_value
+                    )
+                    db.add(bet)
+                    generated_bets += 1
+        
+        db.commit()
+        
+        return {
+            "status": "Sample bets generated",
+            "bets_generated": generated_bets,
+            "races_processed": len(races_with_entries[:5]),
+            "message": f"Generated {generated_bets} sample bets for testing"
+        }
+        
+    except Exception as e:
+        import traceback
+        return {
+            "status": "Sample bet generation failed",
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
 @app.get("/api/debug/races")
 async def debug_races(db: Session = Depends(get_db)):
     """Debug - show all races in database"""
@@ -589,10 +691,16 @@ async def debug_races(db: Session = Depends(get_db)):
     all_races = db.query(Race).all()
     today_races = db.query(Race).filter(Race.race_date == today).all()
     
+    # Count entries and bets
+    total_entries = db.query(RaceEntry).join(Race).filter(Race.race_date == today).count()
+    total_bets = db.query(Bet).join(RaceEntry).join(Race).filter(Race.race_date == today).count()
+    
     return {
         "today": today.strftime('%Y-%m-%d'),
         "total_races_in_db": len(all_races),
         "races_today": len(today_races),
+        "entries_today": total_entries,
+        "bets_today": total_bets,
         "today_races_detail": [
             {
                 "id": race.id,
@@ -604,7 +712,9 @@ async def debug_races(db: Session = Depends(get_db)):
                 "distance": race.distance,
                 "surface": race.surface,
                 "race_type": race.race_type,
-                "purse": race.purse
+                "purse": race.purse,
+                "entries_count": db.query(RaceEntry).filter(RaceEntry.race_id == race.id).count(),
+                "bets_count": db.query(Bet).filter(Bet.race_id == race.id).count()
             } for race in today_races
         ],
         "all_races_detail": [

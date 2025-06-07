@@ -164,67 +164,103 @@ class DataSync:
             db.add(race)
             
     async def _sync_entries(self, db: Session, race_id: int, entries_data: dict):
-        for entry_info in entries_data.get('entries', []):
-            # Sync horse
-            horse = await self._get_or_create_horse(db, entry_info)
-            
-            # Sync jockey
-            jockey = await self._get_or_create_jockey(db, entry_info)
-            
-            # Sync trainer
-            trainer = await self._get_or_create_trainer(db, entry_info)
-            
-            # Check if entry exists
-            existing_entry = db.query(RaceEntry).filter(
-                RaceEntry.race_id == race_id,
-                RaceEntry.horse_id == horse.id
-            ).first()
-            
-            if not existing_entry:
-                # Handle different field names for different APIs
-                post_pos = (entry_info.get('post_position') or 
-                           entry_info.get('post_pos') or 
-                           entry_info.get('program_number'))
+        # Handle both 'entries' and 'runners' formats (Fair Meadows uses 'runners')
+        entries_list = entries_data.get('entries', []) or entries_data.get('runners', [])
+        
+        logger.info(f"Processing {len(entries_list)} entries for race {race_id}")
+        
+        for entry_info in entries_list:
+            try:
+                # Sync horse
+                horse = await self._get_or_create_horse(db, entry_info)
                 
-                morning_odds = entry_info.get('morning_line_odds', 0)
-                if isinstance(morning_odds, str):
-                    # Convert "12-1" to decimal odds
-                    try:
-                        if '-' in morning_odds:
-                            parts = morning_odds.split('-')
-                            if len(parts) == 2:
-                                morning_odds = float(parts[0]) / float(parts[1])
-                        else:
-                            morning_odds = float(morning_odds)
-                    except:
-                        morning_odds = 0
+                # Sync jockey
+                jockey = await self._get_or_create_jockey(db, entry_info)
                 
-                entry = RaceEntry(
-                    race_id=race_id,
-                    horse_id=horse.id,
-                    jockey_id=jockey.id,
-                    trainer_id=trainer.id,
-                    post_position=post_pos,
-                    morning_line_odds=morning_odds,
-                    current_odds=entry_info.get('current_odds', morning_odds),
-                    weight=entry_info.get('weight'),
-                    medication=entry_info.get('medication'),
-                    equipment=entry_info.get('equipment')
-                )
-                db.add(entry)
+                # Sync trainer
+                trainer = await self._get_or_create_trainer(db, entry_info)
+                
+                # Check if entry exists
+                existing_entry = db.query(RaceEntry).filter(
+                    RaceEntry.race_id == race_id,
+                    RaceEntry.horse_id == horse.id
+                ).first()
+                
+                if not existing_entry:
+                    # Handle different field names for different APIs
+                    post_pos = (entry_info.get('post_position') or 
+                               entry_info.get('post_pos') or 
+                               entry_info.get('program_number') or
+                               entry_info.get('cloth_number'))
+                    
+                    # Handle morning line odds
+                    morning_odds = (entry_info.get('morning_line_odds') or
+                                   entry_info.get('odds') or
+                                   entry_info.get('ml_odds'))
+                    
+                    if isinstance(morning_odds, str):
+                        # Convert "12-1" to decimal odds
+                        try:
+                            if '-' in morning_odds:
+                                parts = morning_odds.split('-')
+                                if len(parts) == 2:
+                                    morning_odds = float(parts[0]) / float(parts[1]) + 1
+                            else:
+                                morning_odds = float(morning_odds)
+                        except:
+                            morning_odds = 3.0  # Default odds
+                    elif not morning_odds:
+                        morning_odds = 3.0  # Default odds
+                    
+                    # Handle weight
+                    weight = entry_info.get('weight') or entry_info.get('jockey_weight') or 126
+                    
+                    entry = RaceEntry(
+                        race_id=race_id,
+                        horse_id=horse.id,
+                        jockey_id=jockey.id,
+                        trainer_id=trainer.id,
+                        post_position=post_pos,
+                        morning_line_odds=morning_odds,
+                        current_odds=entry_info.get('current_odds', morning_odds),
+                        weight=weight,
+                        medication=entry_info.get('medication'),
+                        equipment=entry_info.get('equipment')
+                    )
+                    db.add(entry)
+                    logger.info(f"Added entry for horse {horse.name} in race {race_id}")
+                    
+            except Exception as e:
+                logger.error(f"Error processing entry in race {race_id}: {e}")
+                continue
                 
     async def _get_or_create_horse(self, db: Session, entry_info: dict) -> Horse:
         # Handle different API field names
         reg_number = (entry_info.get('horse_registration_number') or 
-                     entry_info.get('registration_number'))
+                     entry_info.get('registration_number') or
+                     entry_info.get('horse_id'))
+        
+        # Handle horse name from different sources
+        horse_name = (entry_info.get('horse_name') or
+                     entry_info.get('name'))
+        
+        # For Fair Meadows, horse data might be nested
+        if 'horse' in entry_info and isinstance(entry_info['horse'], dict):
+            horse_data = entry_info['horse']
+            reg_number = reg_number or horse_data.get('registration_number') or horse_data.get('id')
+            horse_name = horse_name or horse_data.get('name')
+        
+        # Generate fallback if no registration number
+        if not reg_number:
+            reg_number = f"TEMP_{hash(horse_name or 'unknown') % 100000}"
         
         horse = db.query(Horse).filter(Horse.registration_number == reg_number).first()
         
         if not horse:
             horse = Horse(
                 registration_number=reg_number,
-                name=entry_info.get('horse_name'),
-                age=entry_info.get('horse_age')
+                name=horse_name or f"Horse {reg_number}",
+                age=entry_info.get('horse_age') or entry_info.get('age') or 4
             )
             db.add(horse)
             db.flush()
