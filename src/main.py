@@ -301,12 +301,9 @@ async def trigger_sync(db: Session = Depends(get_db)):
                     # 'races' format - extract entries from each race
                     debug_info.append(f"📋 {track_data['name']}: {len(races)} races returned (races format)")
                     
-                    # Debug: show first race structure
-                    if races:
-                        first_race = races[0]
-                        debug_info.append(f"🔍 First race keys: {list(first_race.keys())}")
-                        
                     races_by_number = {}
+                    race_keys_found = []
+                    
                     for i, race in enumerate(races):
                         # Extract race number from race_key (likely "R1", "R2", etc.)
                         race_key = race.get('race_key', '')
@@ -325,10 +322,12 @@ async def trigger_sync(db: Session = Depends(get_db)):
                                        race.get('number') or
                                        i + 1)  # fallback to index + 1
                         
-                        debug_info.append(f"🏇 Race {i+1}: race_key='{race_key}', race_num={race_num}")
+                        race_keys_found.append(f"{race_key}→{race_num}")
                         
                         if race_num:
                             races_by_number[race_num] = race
+                    
+                    debug_info.append(f"🔑 Race keys: {', '.join(race_keys_found[:5])}{'...' if len(race_keys_found) > 5 else ''}")
                 else:
                     # 'entries' format - group by race number
                     debug_info.append(f"📋 {track_data['name']}: {len(entries)} entries returned (entries format)")
