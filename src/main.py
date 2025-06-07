@@ -486,6 +486,56 @@ async def sync_race_entries(db: Session = Depends(get_db)):
         }
 
 
+@app.get("/api/debug/race-structure")
+async def debug_race_structure():
+    """Debug endpoint to see actual race structure from API"""
+    try:
+        from racing_api import RacingAPIClient
+        
+        api_client = RacingAPIClient()
+        today = date.today()
+        
+        # Get Fair Meadows races
+        races_data = await api_client.get_races_by_date('FM', today)
+        
+        result = {
+            "api_format": "races" if 'races' in races_data else "entries",
+            "top_level_keys": list(races_data.keys()),
+        }
+        
+        if 'races' in races_data and races_data['races']:
+            first_race = races_data['races'][0]
+            result["first_race_keys"] = list(first_race.keys())
+            
+            # Look for list fields that might contain entries
+            list_fields = {}
+            for key, value in first_race.items():
+                if isinstance(value, list):
+                    list_fields[key] = {
+                        "length": len(value),
+                        "first_item_type": type(value[0]).__name__ if value else "empty",
+                        "first_item_sample": str(value[0])[:100] if value else None
+                    }
+            
+            result["list_fields_in_race"] = list_fields
+            
+            # Check specific fields
+            for field in ['entries', 'horses', 'runners', 'starters', 'competitors']:
+                if field in first_race:
+                    result[f"has_{field}"] = True
+                    if isinstance(first_race[field], list):
+                        result[f"{field}_count"] = len(first_race[field])
+        
+        return result
+        
+    except Exception as e:
+        import traceback
+        return {
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
+
 @app.get("/api/debug/races")
 async def debug_races(db: Session = Depends(get_db)):
     """Debug - show all races in database"""
