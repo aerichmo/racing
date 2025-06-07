@@ -552,6 +552,34 @@ async def debug_race_structure():
         }
 
 
+@app.get("/api/debug/race-entries/{race_number}")
+async def debug_race_entries(race_number: int):
+    """Debug endpoint to test get_race_entries for a specific race"""
+    try:
+        from racing_api import RacingAPIClient
+        
+        api_client = RacingAPIClient()
+        today = date.today()
+        
+        # Test get_race_entries for Fair Meadows
+        entries_data = await api_client.get_race_entries('FM', today, race_number)
+        
+        return {
+            "race_number": race_number,
+            "entries_count": len(entries_data.get('entries', [])),
+            "entries": entries_data.get('entries', [])[:2],  # First 2 entries for inspection
+            "first_entry_keys": list(entries_data['entries'][0].keys()) if entries_data.get('entries') else [],
+            "date": today.strftime("%Y-%m-%d")
+        }
+        
+    except Exception as e:
+        import traceback
+        return {
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
+
 @app.get("/api/debug/races")
 async def debug_races(db: Session = Depends(get_db)):
     """Debug - show all races in database"""
