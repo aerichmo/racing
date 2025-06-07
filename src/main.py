@@ -247,10 +247,6 @@ async def get_roi_stats(track_id: int, db: Session = Depends(get_db)):
         ]
     }
 
-@app.get("/api/test")
-async def test_endpoint():
-    """Simple test endpoint"""
-    return {"message": "API is working", "timestamp": datetime.now().isoformat()}
 
 @app.post("/api/sync")
 async def trigger_sync(db: Session = Depends(get_db)):
@@ -458,9 +454,10 @@ async def trigger_sync(db: Session = Depends(get_db)):
 
 @app.post("/api/sync-entries")
 async def sync_race_entries(db: Session = Depends(get_db)):
-    """Sync entries (horses, jockeys, trainers) for existing races"""
+    """Sync entries (horses, jockeys, trainers) for existing races and generate betting recommendations"""
     try:
         from data_sync import DataSync
+        from betting_engine import BettingEngine
         import traceback
         
         debug_info = []
@@ -498,6 +495,48 @@ async def sync_race_entries(db: Session = Depends(get_db)):
                 debug_info.append(f"Race {race.race_number} failed: {str(race_error)}")
                 continue
         
+        # Generate betting recommendations for races with entries
+        if synced_count > 0:
+            debug_info.append("Generating betting recommendations...")
+            engine = BettingEngine(db)
+            
+            races_with_entries = db.query(Race).join(RaceEntry).filter(
+                Race.race_date == today
+            ).distinct().all()
+            
+            generated_bets = 0
+            for race in races_with_entries:
+                try:
+                    # Generate recommendations using the betting engine
+                    recommendations = await engine.analyze_race(race)
+                    
+                    for rec in recommendations:
+                        # Check if bet already exists
+                        existing_bet = db.query(Bet).filter(
+                            Bet.race_id == race.id,
+                            Bet.entry_id == rec['entry_id']
+                        ).first()
+                        
+                        if not existing_bet:
+                            bet = Bet(
+                                race_id=race.id,
+                                entry_id=rec['entry_id'],
+                                bet_type=rec['bet_type'],
+                                amount=rec['bet_amount'],
+                                odds=rec['current_odds'],
+                                confidence=rec['confidence'],
+                                expected_value=rec['expected_value']
+                            )
+                            db.add(bet)
+                            generated_bets += 1
+                            
+                except Exception as bet_error:
+                    debug_info.append(f"Bet generation failed for race {race.race_number}: {str(bet_error)}")
+                    continue
+            
+            db.commit()
+            debug_info.append(f"Generated {generated_bets} betting recommendations")
+        
         # Count total entries
         total_entries = db.query(RaceEntry).join(Race).filter(
             Race.race_date == today
@@ -521,213 +560,9 @@ async def sync_race_entries(db: Session = Depends(get_db)):
         }
 
 
-@app.get("/api/debug/race-structure")
-async def debug_race_structure():
-    """Debug endpoint to see actual race structure from API"""
-    try:
-        from racing_api import RacingAPIClient
-        
-        api_client = RacingAPIClient()
-        today = date.today()
-        
-        # Get Fair Meadows races
-        races_data = await api_client.get_races_by_date('FM', today)
-        
-        result = {
-            "api_format": "races" if 'races' in races_data else "entries",
-            "top_level_keys": list(races_data.keys()),
-        }
-        
-        if 'races' in races_data and races_data['races']:
-            first_race = races_data['races'][0]
-            result["first_race_keys"] = list(first_race.keys())
-            
-            # Look for list fields that might contain entries
-            list_fields = {}
-            for key, value in first_race.items():
-                if isinstance(value, list):
-                    list_fields[key] = {
-                        "length": len(value),
-                        "first_item_type": type(value[0]).__name__ if value else "empty",
-                        "first_item_sample": str(value[0])[:100] if value else None
-                    }
-            
-            result["list_fields_in_race"] = list_fields
-            
-            # Check specific fields
-            for field in ['entries', 'horses', 'runners', 'starters', 'competitors']:
-                if field in first_race:
-                    result[f"has_{field}"] = True
-                    if isinstance(first_race[field], list):
-                        result[f"{field}_count"] = len(first_race[field])
-                        
-                        # For runners, show the structure
-                        if field == 'runners' and first_race[field]:
-                            first_runner = first_race[field][0]
-                            result["runner_fields"] = list(first_runner.keys())
-                            
-                            # Map key fields
-                            result["runner_mapping"] = {
-                                "horse_name": first_runner.get('horse_name') or first_runner.get('name'),
-                                "horse_id": first_runner.get('horse_registration_number') or first_runner.get('horse_id'),
-                                "jockey_name": first_runner.get('jockey_name') or first_runner.get('jockey'),
-                                "trainer_name": first_runner.get('trainer_name') or first_runner.get('trainer'),
-                                "post_position": first_runner.get('post_position') or first_runner.get('post'),
-                                "program_number": first_runner.get('program_number'),
-                                "odds": first_runner.get('morning_line_odds') or first_runner.get('odds')
-                            }
-        
-        return result
-        
-    except Exception as e:
-        import traceback
-        return {
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }
 
 
-@app.get("/api/debug/race-entries/{race_number}")
-async def debug_race_entries(race_number: int):
-    """Debug endpoint to test get_race_entries for a specific race"""
-    try:
-        from racing_api import RacingAPIClient
-        
-        api_client = RacingAPIClient()
-        today = date.today()
-        
-        # Test get_race_entries for Fair Meadows
-        entries_data = await api_client.get_race_entries('FM', today, race_number)
-        
-        return {
-            "race_number": race_number,
-            "entries_count": len(entries_data.get('entries', [])),
-            "entries": entries_data.get('entries', [])[:2],  # First 2 entries for inspection
-            "first_entry_keys": list(entries_data['entries'][0].keys()) if entries_data.get('entries') else [],
-            "debug": entries_data.get('debug', []),
-            "date": today.strftime("%Y-%m-%d")
-        }
-        
-    except Exception as e:
-        import traceback
-        return {
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }
 
-
-@app.post("/api/generate-sample-bets")
-async def generate_sample_bets(db: Session = Depends(get_db)):
-    """Generate sample betting data for testing recommendations"""
-    try:
-        today = date.today()
-        
-        # Get races with entries
-        races_with_entries = db.query(Race).join(RaceEntry).filter(
-            Race.race_date == today
-        ).distinct().all()
-        
-        if not races_with_entries:
-            return {
-                "status": "No races with entries found",
-                "message": "Need to sync race entries first"
-            }
-        
-        generated_bets = 0
-        
-        for race in races_with_entries[:5]:  # Process first 5 races
-            entries = db.query(RaceEntry).filter(RaceEntry.race_id == race.id).all()
-            
-            # Create bets for top 2-3 entries based on odds
-            sorted_entries = sorted(entries, key=lambda x: x.morning_line_odds or 999)[:3]
-            
-            for i, entry in enumerate(sorted_entries):
-                # Check if bet already exists
-                existing_bet = db.query(Bet).filter(
-                    Bet.race_id == race.id,
-                    Bet.entry_id == entry.id
-                ).first()
-                
-                if not existing_bet:
-                    # Generate realistic betting data
-                    confidence = 0.8 - (i * 0.1)  # 80%, 70%, 60%
-                    expected_value = 1.25 - (i * 0.05)  # 1.25, 1.20, 1.15
-                    bet_amount = 20.0 - (i * 5.0)  # $20, $15, $10
-                    
-                    bet = Bet(
-                        race_id=race.id,
-                        entry_id=entry.id,
-                        bet_type='WIN',
-                        amount=bet_amount,
-                        odds=entry.morning_line_odds,
-                        confidence=confidence,
-                        expected_value=expected_value
-                    )
-                    db.add(bet)
-                    generated_bets += 1
-        
-        db.commit()
-        
-        return {
-            "status": "Sample bets generated",
-            "bets_generated": generated_bets,
-            "races_processed": len(races_with_entries[:5]),
-            "message": f"Generated {generated_bets} sample bets for testing"
-        }
-        
-    except Exception as e:
-        import traceback
-        return {
-            "status": "Sample bet generation failed",
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }
-
-@app.get("/api/debug/races")
-async def debug_races(db: Session = Depends(get_db)):
-    """Debug - show all races in database"""
-    today = date.today()
-    
-    all_races = db.query(Race).all()
-    today_races = db.query(Race).filter(Race.race_date == today).all()
-    
-    # Count entries and bets
-    total_entries = db.query(RaceEntry).join(Race).filter(Race.race_date == today).count()
-    total_bets = db.query(Bet).join(RaceEntry).join(Race).filter(Race.race_date == today).count()
-    
-    return {
-        "today": today.strftime('%Y-%m-%d'),
-        "total_races_in_db": len(all_races),
-        "races_today": len(today_races),
-        "entries_today": total_entries,
-        "bets_today": total_bets,
-        "today_races_detail": [
-            {
-                "id": race.id,
-                "api_id": race.api_id,
-                "track_id": race.track_id,
-                "race_number": race.race_number,
-                "race_date": race.race_date.strftime('%Y-%m-%d'),
-                "race_time": race.race_time.strftime('%H:%M:%S'),
-                "distance": race.distance,
-                "surface": race.surface,
-                "race_type": race.race_type,
-                "purse": race.purse,
-                "entries_count": db.query(RaceEntry).filter(RaceEntry.race_id == race.id).count(),
-                "bets_count": db.query(Bet).filter(Bet.race_id == race.id).count()
-            } for race in today_races
-        ],
-        "all_races_detail": [
-            {
-                "id": race.id,
-                "api_id": race.api_id,
-                "track_id": race.track_id,
-                "race_number": race.race_number,
-                "race_date": race.race_date.strftime('%Y-%m-%d') if race.race_date else None,
-                "track_name": race.track.name if race.track else "Unknown"
-            } for race in all_races[-10:]  # Last 10 races
-        ]
-    }
 
 
 if __name__ == "__main__":

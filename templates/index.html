@@ -231,26 +231,43 @@
             color: #7f8c8d;
         }
         
-        .sync-buttons {
+        .sync-button {
             position: fixed;
             bottom: 20px;
             right: 20px;
-            display: flex;
-            gap: 10px;
         }
         
         .sync-btn {
-            padding: 10px 20px;
-            background-color: #95a5a6;
+            padding: 15px 25px;
+            background-color: #3498db;
             color: white;
             border: none;
-            border-radius: 5px;
+            border-radius: 8px;
             cursor: pointer;
-            font-size: 0.9em;
+            font-size: 1em;
+            font-weight: 500;
+            box-shadow: 0 2px 10px rgba(52, 152, 219, 0.3);
+            transition: all 0.3s ease;
         }
         
         .sync-btn:hover {
-            background-color: #7f8c8d;
+            background-color: #2980b9;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(52, 152, 219, 0.4);
+        }
+        
+        .sync-btn:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .last-sync {
+            font-size: 0.8em;
+            color: #7f8c8d;
+            text-align: center;
+            margin-top: 20px;
         }
     </style>
 </head>
@@ -284,15 +301,55 @@
         </div>
     </div>
     
-    <div class="sync-buttons">
-        <button class="sync-btn" onclick="testAPI()">🧪 Test API</button>
-        <button class="sync-btn" onclick="triggerSync()">🔄 Sync Races</button>
-        <button class="sync-btn" onclick="syncEntries()">🐴 Sync Entries</button>
+    <div class="sync-button">
+        <button class="sync-btn" id="sync-button" onclick="performFullSync()">🔄 Sync Data</button>
+        <div class="last-sync" id="last-sync-time"></div>
     </div>
     
     <script>
         let currentTrackId = null;
         let refreshInterval = null;
+        let lastSyncTime = null;
+        
+        // Initialize scheduled refresh on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            setupScheduledRefresh();
+            updateLastSyncDisplay();
+        });
+        
+        function setupScheduledRefresh() {
+            // Check every minute if we should refresh
+            setInterval(checkScheduledRefresh, 60000);
+        }
+        
+        function checkScheduledRefresh() {
+            const now = new Date();
+            const hour = now.getHours();
+            const minute = now.getMinutes();
+            
+            // Check for scheduled refresh times
+            const shouldRefresh = 
+                (hour === 8 && minute === 0) ||  // 8 AM
+                isOneHourBeforeFirstRace() ||     // 1 hour before first race
+                isTenMinutesBeforeRace();         // 10 minutes before each race
+            
+            if (shouldRefresh && currentTrackId) {
+                console.log('Scheduled refresh triggered');
+                performAutoSync();
+            }
+        }
+        
+        function isOneHourBeforeFirstRace() {
+            // This would need race schedule data - simplified for now
+            // In practice, check if current time is 1 hour before first race
+            return false;
+        }
+        
+        function isTenMinutesBeforeRace() {
+            // This would need race schedule data - simplified for now  
+            // In practice, check if current time is 10 minutes before any race
+            return false;
+        }
         
         async function selectTrack(trackId, trackName) {
             currentTrackId = trackId;
@@ -310,13 +367,15 @@
             await loadROIStats();
             await loadRecommendations();
             
-            // Set up auto-refresh every 30 seconds
+            // Clear any existing refresh interval
             if (refreshInterval) {
                 clearInterval(refreshInterval);
             }
+            
+            // Only refresh display every 2 minutes during active use
             refreshInterval = setInterval(() => {
                 loadRecommendations();
-            }, 30000);
+            }, 120000);
         }
         
         async function loadROIStats() {
@@ -458,120 +517,102 @@
             return 'confidence-low';
         }
         
-        async function testAPI() {
-            try {
-                console.log('Testing API...');
-                const response = await fetch('/api/test');
-                console.log('Test response status:', response.status);
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
-                
-                const result = await response.json();
-                console.log('Test result:', result);
-                alert(`API Test Success:\n${result.message}\nTime: ${result.timestamp}`);
-            } catch (error) {
-                console.error('API test failed:', error);
-                alert(`API Test Failed: ${error.message}`);
-            }
-        }
-
-        async function triggerSync() {
-            const button = event.target;
+        async function performFullSync() {
+            const button = document.getElementById('sync-button');
             const originalText = button.textContent;
             button.disabled = true;
             button.textContent = '🔄 Syncing...';
             
             try {
-                console.log('Starting sync...');
-                const response = await fetch('/api/sync', {
+                console.log('Starting full sync...');
+                
+                // Step 1: Sync races
+                const raceResponse = await fetch('/api/sync', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
+                    headers: { 'Content-Type': 'application/json' }
                 });
                 
-                console.log('Response status:', response.status);
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                if (!raceResponse.ok) {
+                    throw new Error(`Race sync failed: ${raceResponse.status}`);
                 }
                 
-                const result = await response.json();
-                console.log('Sync result:', result);
+                // Step 2: Sync entries
+                button.textContent = '🐴 Syncing Entries...';
+                const entryResponse = await fetch('/api/sync-entries', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
                 
-                // Show detailed debug info
-                let message = '';
-                if (result.status) {
-                    message += `Status: ${result.status}\n\n`;
+                if (!entryResponse.ok) {
+                    throw new Error(`Entry sync failed: ${entryResponse.status}`);
                 }
                 
-                if (result.debug && Array.isArray(result.debug)) {
-                    message += 'Debug Info:\n';
-                    message += result.debug.join('\n');
-                } else if (result.error) {
-                    message += `Error: ${result.error}`;
-                } else {
-                    message += 'No debug information available';
-                }
+                const entryResult = await entryResponse.json();
                 
-                alert(message);
+                // Update last sync time
+                lastSyncTime = new Date();
+                updateLastSyncDisplay();
                 
+                console.log('Full sync completed');
+                
+                // Reload recommendations if a track is selected
                 if (currentTrackId) {
                     await loadRecommendations();
+                    await loadROIStats();
                 }
+                
+                // Show success message
+                const message = `Sync completed successfully!\nEntries synced: ${entryResult.entries_count || 0}`;
+                alert(message);
+                
             } catch (error) {
-                console.error('Error triggering sync:', error);
-                let errorMsg = 'Error triggering sync: ';
-                if (error.message) {
-                    errorMsg += error.message;
-                } else {
-                    errorMsg += 'Unknown error occurred';
-                }
-                alert(errorMsg);
+                console.error('Full sync failed:', error);
+                alert(`Sync failed: ${error.message}`);
             } finally {
                 button.disabled = false;
                 button.textContent = originalText;
             }
         }
         
-        async function syncEntries() {
-            const button = event.target;
-            const originalText = button.textContent;
-            button.disabled = true;
-            button.textContent = '🐴 Syncing...';
-            
+        async function performAutoSync() {
             try {
-                console.log('Starting entry sync...');
-                const response = await fetch('/api/sync-entries', {
+                console.log('Performing scheduled auto-sync...');
+                
+                // Sync races
+                await fetch('/api/sync', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
+                    headers: { 'Content-Type': 'application/json' }
                 });
                 
-                console.log('Response status:', response.status);
+                // Sync entries
+                await fetch('/api/sync-entries', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
                 
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
+                // Update last sync time
+                lastSyncTime = new Date();
+                updateLastSyncDisplay();
                 
-                const result = await response.json();
-                console.log('Entry sync result:', result);
-                
-                alert(`Entry Sync Result:\n${result.status}\nEntries synced: ${result.entries_count || 0}`);
-                
-                // Reload recommendations if a track is selected
+                // Reload current data
                 if (currentTrackId) {
                     await loadRecommendations();
+                    await loadROIStats();
                 }
+                
+                console.log('Auto-sync completed');
+                
             } catch (error) {
-                console.error('Error syncing entries:', error);
-                alert(`Error syncing entries: ${error.message}`);
-            } finally {
-                button.disabled = false;
-                button.textContent = originalText;
+                console.error('Auto-sync failed:', error);
+            }
+        }
+        
+        function updateLastSyncDisplay() {
+            const element = document.getElementById('last-sync-time');
+            if (lastSyncTime) {
+                element.textContent = `Last sync: ${lastSyncTime.toLocaleTimeString()}`;
+            } else {
+                element.textContent = 'Never synced';
             }
         }
         
