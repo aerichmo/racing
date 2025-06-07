@@ -181,14 +181,32 @@ class DataSync:
             ).first()
             
             if not existing_entry:
+                # Handle different field names for different APIs
+                post_pos = (entry_info.get('post_position') or 
+                           entry_info.get('post_pos') or 
+                           entry_info.get('program_number'))
+                
+                morning_odds = entry_info.get('morning_line_odds', 0)
+                if isinstance(morning_odds, str):
+                    # Convert "12-1" to decimal odds
+                    try:
+                        if '-' in morning_odds:
+                            parts = morning_odds.split('-')
+                            if len(parts) == 2:
+                                morning_odds = float(parts[0]) / float(parts[1])
+                        else:
+                            morning_odds = float(morning_odds)
+                    except:
+                        morning_odds = 0
+                
                 entry = RaceEntry(
                     race_id=race_id,
                     horse_id=horse.id,
                     jockey_id=jockey.id,
                     trainer_id=trainer.id,
-                    post_position=entry_info.get('post_position'),
-                    morning_line_odds=entry_info.get('morning_line_odds', 0),
-                    current_odds=entry_info.get('current_odds', entry_info.get('morning_line_odds', 0)),
+                    post_position=post_pos,
+                    morning_line_odds=morning_odds,
+                    current_odds=entry_info.get('current_odds', morning_odds),
                     weight=entry_info.get('weight'),
                     medication=entry_info.get('medication'),
                     equipment=entry_info.get('equipment')
@@ -196,7 +214,10 @@ class DataSync:
                 db.add(entry)
                 
     async def _get_or_create_horse(self, db: Session, entry_info: dict) -> Horse:
-        reg_number = entry_info.get('horse_registration_number')
+        # Handle different API field names
+        reg_number = (entry_info.get('horse_registration_number') or 
+                     entry_info.get('registration_number'))
+        
         horse = db.query(Horse).filter(Horse.registration_number == reg_number).first()
         
         if not horse:
@@ -211,13 +232,24 @@ class DataSync:
         return horse
     
     async def _get_or_create_jockey(self, db: Session, entry_info: dict) -> Jockey:
-        jockey_id = entry_info.get('jockey_id')
+        # Handle different API formats - jockey can be ID or object
+        jockey_data = entry_info.get('jockey')
+        
+        if isinstance(jockey_data, dict):
+            # Fair Meadows format: {"id": "jky_na_474639", "first_name": "Gonzalo", "last_name": "Gutierrez"}
+            jockey_id = jockey_data.get('id')
+            jockey_name = f"{jockey_data.get('first_name', '')} {jockey_data.get('last_name', '')}".strip()
+        else:
+            # Standard format
+            jockey_id = entry_info.get('jockey_id') or jockey_data
+            jockey_name = entry_info.get('jockey_name')
+        
         jockey = db.query(Jockey).filter(Jockey.api_id == jockey_id).first()
         
         if not jockey:
             jockey = Jockey(
                 api_id=jockey_id,
-                name=entry_info.get('jockey_name')
+                name=jockey_name
             )
             db.add(jockey)
             db.flush()
@@ -225,13 +257,24 @@ class DataSync:
         return jockey
     
     async def _get_or_create_trainer(self, db: Session, entry_info: dict) -> Trainer:
-        trainer_id = entry_info.get('trainer_id')
+        # Handle different API formats - trainer can be ID or object
+        trainer_data = entry_info.get('trainer')
+        
+        if isinstance(trainer_data, dict):
+            # Fair Meadows format: {"id": "trn_na_56727", "first_name": "James", "last_name": "Goodnight"}
+            trainer_id = trainer_data.get('id')
+            trainer_name = f"{trainer_data.get('first_name', '')} {trainer_data.get('last_name', '')}".strip()
+        else:
+            # Standard format
+            trainer_id = entry_info.get('trainer_id') or trainer_data
+            trainer_name = entry_info.get('trainer_name')
+        
         trainer = db.query(Trainer).filter(Trainer.api_id == trainer_id).first()
         
         if not trainer:
             trainer = Trainer(
                 api_id=trainer_id,
-                name=entry_info.get('trainer_name')
+                name=trainer_name
             )
             db.add(trainer)
             db.flush()
