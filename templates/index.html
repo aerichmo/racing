@@ -285,6 +285,7 @@
     </div>
     
     <div class="sync-buttons">
+        <button class="sync-btn" onclick="testAPI()">🧪 Test API</button>
         <button class="sync-btn" onclick="triggerSync()">🔄 Manual Sync</button>
     </div>
     
@@ -456,21 +457,62 @@
             return 'confidence-low';
         }
         
+        async function testAPI() {
+            try {
+                console.log('Testing API...');
+                const response = await fetch('/api/test');
+                console.log('Test response status:', response.status);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const result = await response.json();
+                console.log('Test result:', result);
+                alert(`API Test Success:\n${result.message}\nTime: ${result.timestamp}`);
+            } catch (error) {
+                console.error('API test failed:', error);
+                alert(`API Test Failed: ${error.message}`);
+            }
+        }
+
         async function triggerSync() {
             const button = event.target;
+            const originalText = button.textContent;
             button.disabled = true;
             button.textContent = '🔄 Syncing...';
             
             try {
+                console.log('Starting sync...');
                 const response = await fetch('/api/sync', {
-                    method: 'POST'
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
                 });
+                
+                console.log('Response status:', response.status);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
                 const result = await response.json();
+                console.log('Sync result:', result);
                 
                 // Show detailed debug info
-                let message = `${result.status}\n\nDebug Info:\n`;
-                if (result.debug) {
+                let message = '';
+                if (result.status) {
+                    message += `Status: ${result.status}\n\n`;
+                }
+                
+                if (result.debug && Array.isArray(result.debug)) {
+                    message += 'Debug Info:\n';
                     message += result.debug.join('\n');
+                } else if (result.error) {
+                    message += `Error: ${result.error}`;
+                } else {
+                    message += 'No debug information available';
                 }
                 
                 alert(message);
@@ -480,10 +522,16 @@
                 }
             } catch (error) {
                 console.error('Error triggering sync:', error);
-                alert('Error triggering sync: ' + error.message);
+                let errorMsg = 'Error triggering sync: ';
+                if (error.message) {
+                    errorMsg += error.message;
+                } else {
+                    errorMsg += 'Unknown error occurred';
+                }
+                alert(errorMsg);
             } finally {
                 button.disabled = false;
-                button.textContent = '🔄 Manual Sync';
+                button.textContent = originalText;
             }
         }
         

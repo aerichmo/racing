@@ -246,6 +246,11 @@ async def get_roi_stats(track_id: int, db: Session = Depends(get_db)):
         ]
     }
 
+@app.get("/api/test")
+async def test_endpoint():
+    """Simple test endpoint"""
+    return {"message": "API is working", "timestamp": datetime.now().isoformat()}
+
 @app.post("/api/sync")
 async def trigger_sync(db: Session = Depends(get_db)):
     """Comprehensive manual sync with detailed debugging"""
