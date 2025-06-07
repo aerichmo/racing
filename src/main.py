@@ -288,30 +288,21 @@ async def trigger_manual_sync(db: Session = Depends(get_db)):
             
             races_synced = 0
             track_debug = [f"{track_data['name']} - API response keys: {list(races_data.keys()) if races_data else 'None'}"]
-            track_debug.append(f"{track_data['name']} - Races in response: {len(races_data.get('races', []))} if races_data else 0")
+            track_debug.append(f"{track_data['name']} - Entries in response: {len(races_data.get('entries', []))} if races_data else 0")
             
-            if races_data and 'races' in races_data:
-                track_debug.append(f"{track_data['name']} - First race sample: {races_data['races'][0] if races_data['races'] else 'No races'}")
-            else:
-                track_debug.append(f"{track_data['name']} - Full API response: {races_data}")
+            # Group entries by race_number to identify unique races
+            races_by_number = {}
+            for entry in races_data.get('entries', []):
+                race_num = entry.get('race_number', 0)
+                if race_num not in races_by_number:
+                    races_by_number[race_num] = entry
             
-            for i, race_info in enumerate(races_data.get('races', [])):
-                # Extract race key and number
-                race_key = race_info.get('race_key', '')
-                track_debug.append(f"{track_data['name']} Race {i}: race_key={race_key}, type={type(race_key)}")
-                
-                if not race_key:
-                    continue
-                    
-                # Handle race_key that might be a dict or other type
-                if isinstance(race_key, dict):
-                    race_number = int(race_key.get('race_number', i + 1))
-                    race_key = f"R{race_number}"
-                elif isinstance(race_key, str) and race_key.startswith('R'):
-                    race_number = int(race_key.replace('R', ''))
-                else:
-                    race_number = i + 1
-                    race_key = f"R{race_number}"
+            track_debug.append(f"{track_data['name']} - Unique races found: {len(races_by_number)}")
+            
+            for race_number, race_info in races_by_number.items():
+                # Use race_number as the key since entries don't have race_key
+                race_key = f"R{race_number}"
+                track_debug.append(f"{track_data['name']} Race {race_number}: Creating race_key={race_key}")
                 
                 # Check if already exists
                 existing = db.query(Race).filter(

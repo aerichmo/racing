@@ -37,8 +37,15 @@ class DataSync:
             try:
                 races_data = await self.api_client.get_races_by_date(track_code, today)
                 
-                for race_info in races_data.get('races', []):
-                    await self._sync_race(db, track.id, race_info, today)
+                # Group entries by race_number to identify unique races
+                races_by_number = {}
+                for entry in races_data.get('entries', []):
+                    race_num = entry.get('race_number', 0)
+                    if race_num not in races_by_number:
+                        races_by_number[race_num] = entry
+                
+                for race_number, race_info in races_by_number.items():
+                    await self._sync_race(db, track.id, race_info, today, race_number)
                     
             except Exception as e:
                 logger.error(f"Error syncing races for {track_name}: {e}")
@@ -119,19 +126,15 @@ class DataSync:
         db.commit()
         logger.info(f"Race update sync completed for race {race_id}")
     
-    async def _sync_race(self, db: Session, track_id: int, race_info: dict, race_date: date):
-        # Check if race already exists
-        race_key = race_info.get('race_key', '')
+    async def _sync_race(self, db: Session, track_id: int, race_info: dict, race_date: date, race_number: int):
+        # Create race_key from race_number
+        race_key = f"R{race_number}"
         existing_race = db.query(Race).filter(
             Race.api_id == race_key,
             Race.track_id == track_id
         ).first()
         
         if not existing_race:
-            # Extract race number from race_key (format: "R1", "R2", etc.)
-            race_key = race_info.get('race_key', '')
-            race_number = int(race_key.replace('R', '')) if race_key.startswith('R') else 1
-            
             # Parse post time
             post_time_str = race_info.get('post_time', '')
             if post_time_str:
@@ -147,7 +150,7 @@ class DataSync:
             track_name = track.name if track else ""
             
             race = Race(
-                api_id=race_info.get('race_key', ''),
+                api_id=race_key,
                 track_id=track_id,
                 race_number=race_number,
                 race_date=race_date,
