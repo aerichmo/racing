@@ -57,24 +57,10 @@ class RacingAPIClient:
             all_track_ids = [meet.get('track_id', '') for meet in meets_data.get('meets', [])]
             all_tracks_info = [(meet.get('track_id', ''), meet.get('track_name', '')) for meet in meets_data.get('meets', [])]
             
-            # Try exact match first
             for meet in meets_data.get('meets', []):
                 if meet.get('track_id') == api_track_code and meet.get('date') == target_date:
                     meet_id = meet.get('meet_id')
                     break
-            
-            # If no exact match and looking for Fair Meadows, try fuzzy matching
-            if not meet_id and track_code == 'FM':
-                for meet in meets_data.get('meets', []):
-                    track_id = meet.get('track_id', '').upper()
-                    track_name = meet.get('track_name', '').upper()
-                    if meet.get('date') == target_date and (
-                        'FAIR' in track_id or 'MEADOWS' in track_id or 
-                        'FAIR' in track_name or 'MEADOWS' in track_name or
-                        'FM' in track_id or 'FMT' in track_id
-                    ):
-                        meet_id = meet.get('meet_id')
-                        break
             
             if not meet_id:
                 # Return debug info when no meet found

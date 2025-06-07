@@ -12,7 +12,6 @@ from contextlib import asynccontextmanager
 from database import get_db, Base, get_engine, Track, Race, Bet, BetResult, DailyROI, RaceEntry, RaceResult
 from scheduler import RaceScheduler
 from betting_engine import BettingEngine
-from debug_endpoint import router as debug_router
 import os
 
 # Get the base directory (parent of src)
@@ -53,9 +52,6 @@ async def lifespan(app: FastAPI):
     # Add any cleanup code here if needed
 
 app = FastAPI(title="Horse Racing Betting Platform", lifespan=lifespan)
-
-# Include debug router
-app.include_router(debug_router)
 
 # Mount static files
 static_path = BASE_DIR / "static"
@@ -295,8 +291,11 @@ async def trigger_manual_sync(db: Session = Depends(get_db)):
             track_debug.append(f"{track_data['name']} - Entries in response: {len(races_data.get('entries', [])) if races_data else 0}")
             
             # Add more detailed logging for Fair Meadows
-            if track_data["name"] == "Fair Meadows" and races_data:
-                track_debug.append(f"Fair Meadows API response sample: {str(races_data)[:200]}")
+            if track_data["name"] == "Fair Meadows":
+                if races_data and 'debug' in races_data:
+                    track_debug.append(f"Fair Meadows debug info: {races_data['debug']}")
+                elif races_data:
+                    track_debug.append(f"Fair Meadows API response sample: {str(races_data)[:200]}")
             
             # Group entries by race_number to identify unique races
             races_by_number = {}
