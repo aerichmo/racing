@@ -305,13 +305,23 @@ async def trigger_sync(db: Session = Depends(get_db)):
                     race_keys_found = []
                     
                     for i, race in enumerate(races):
-                        # Extract race number from race_key (likely "R1", "R2", etc.)
+                        # Extract race number from race_key (could be string or dict)
                         race_key = race.get('race_key', '')
                         race_num = None
                         
                         if race_key:
-                            # Extract number from race_key (e.g., "R1" -> 1)
-                            match = re.search(r'(\d+)', race_key)
+                            # Handle if race_key is a dict (extract key or relevant field)
+                            if isinstance(race_key, dict):
+                                # Try common fields that might contain the race number
+                                race_key_str = (str(race_key.get('key', '')) or 
+                                              str(race_key.get('id', '')) or 
+                                              str(race_key.get('number', '')) or
+                                              str(race_key))
+                            else:
+                                race_key_str = str(race_key)
+                            
+                            # Extract number from race_key string (e.g., "R1" -> 1)
+                            match = re.search(r'(\d+)', race_key_str)
                             if match:
                                 race_num = int(match.group(1))
                         
@@ -322,7 +332,12 @@ async def trigger_sync(db: Session = Depends(get_db)):
                                        race.get('number') or
                                        i + 1)  # fallback to index + 1
                         
-                        race_keys_found.append(f"{race_key}→{race_num}")
+                        # Show race_key structure in debug
+                        if isinstance(race_key, dict):
+                            race_key_display = f"dict:{list(race_key.keys())}"
+                        else:
+                            race_key_display = str(race_key)
+                        race_keys_found.append(f"{race_key_display}→{race_num}")
                         
                         if race_num:
                             races_by_number[race_num] = race
