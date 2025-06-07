@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import date, datetime
 import asyncio
+import re
 from typing import List, Dict
 from pathlib import Path
 from contextlib import asynccontextmanager
@@ -307,14 +308,24 @@ async def trigger_sync(db: Session = Depends(get_db)):
                         
                     races_by_number = {}
                     for i, race in enumerate(races):
-                        # Try multiple possible race number fields
-                        race_num = (race.get('race_number') or 
-                                   race.get('raceNumber') or 
-                                   race.get('number') or 
-                                   race.get('race_id') or
-                                   i + 1)  # fallback to index + 1
+                        # Extract race number from race_key (likely "R1", "R2", etc.)
+                        race_key = race.get('race_key', '')
+                        race_num = None
                         
-                        debug_info.append(f"🏇 Race {i+1}: race_num={race_num}, keys={list(race.keys())[:5]}")
+                        if race_key:
+                            # Extract number from race_key (e.g., "R1" -> 1)
+                            match = re.search(r'(\d+)', race_key)
+                            if match:
+                                race_num = int(match.group(1))
+                        
+                        # Fallback to other fields if race_key doesn't work
+                        if not race_num:
+                            race_num = (race.get('race_number') or 
+                                       race.get('raceNumber') or 
+                                       race.get('number') or
+                                       i + 1)  # fallback to index + 1
+                        
+                        debug_info.append(f"🏇 Race {i+1}: race_key='{race_key}', race_num={race_num}")
                         
                         if race_num:
                             races_by_number[race_num] = race
