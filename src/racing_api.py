@@ -29,12 +29,15 @@ class RacingAPIClient:
             return response.json()
     
     async def get_races_by_date(self, track_code: str, race_date: date):
-        # Map internal track codes to API track codes
+        # Map internal track codes to API track codes with fallbacks
         track_map = {
-            'FM': 'FMT',  # Fair Meadows -> Fair Meadows Tulsa
-            'RP': 'RP'    # Remington Park stays the same
+            'FM': ['FMT', 'FP'],  # Fair Meadows -> try Fair Meadows Tulsa, then Fairmount Park
+            'RP': ['RP']    # Remington Park stays the same
         }
-        api_track_code = track_map.get(track_code, track_code)
+        
+        possible_codes = track_map.get(track_code, [track_code])
+        if isinstance(possible_codes, str):
+            possible_codes = [possible_codes]
         
         async with httpx.AsyncClient() as client:
             # First, get list of meets to find the meet_id for this track/date
@@ -50,16 +53,21 @@ class RacingAPIClient:
             meets_response.raise_for_status()
             meets_data = meets_response.json()
             
-            # Find the meet for our track and date
-            meet_id = None
-            
             # Debug: log all meets to help troubleshoot
             all_track_ids = [meet.get('track_id', '') for meet in meets_data.get('meets', [])]
             all_tracks_info = [(meet.get('track_id', ''), meet.get('track_name', '')) for meet in meets_data.get('meets', [])]
             
-            for meet in meets_data.get('meets', []):
-                if meet.get('track_id') == api_track_code and meet.get('date') == target_date:
-                    meet_id = meet.get('meet_id')
+            # Try each possible track code
+            meet_id = None
+            used_track_code = None
+            
+            for api_track_code in possible_codes:
+                for meet in meets_data.get('meets', []):
+                    if meet.get('track_id') == api_track_code and meet.get('date') == target_date:
+                        meet_id = meet.get('meet_id')
+                        used_track_code = api_track_code
+                        break
+                if meet_id:
                     break
             
             if not meet_id:
@@ -67,7 +75,7 @@ class RacingAPIClient:
                 return {
                     "entries": [],
                     "debug": {
-                        "looking_for": api_track_code,
+                        "looking_for": possible_codes,
                         "found_tracks": all_track_ids,
                         "found_tracks_detail": all_tracks_info,
                         "date": target_date
@@ -80,7 +88,15 @@ class RacingAPIClient:
                 headers=self.auth_header
             )
             entries_response.raise_for_status()
-            return entries_response.json()
+            result = entries_response.json()
+            
+            # Add debug info about which track code worked
+            if 'debug' not in result:
+                result['debug'] = {}
+            result['debug']['used_track_code'] = used_track_code
+            result['debug']['tried_codes'] = possible_codes
+            
+            return result
     
     async def get_race_entries(self, track_code: str, race_date: date, race_number: int):
         # This method now gets entries for a specific race from the meet entries
@@ -96,12 +112,15 @@ class RacingAPIClient:
         return {"entries": race_entries}
     
     async def get_race_results(self, track_code: str, race_date: date, race_number: int):
-        # Map internal track codes to API track codes
+        # Map internal track codes to API track codes with fallbacks
         track_map = {
-            'FM': 'FMT',  # Fair Meadows -> Fair Meadows Tulsa
-            'RP': 'RP'    # Remington Park stays the same
+            'FM': ['FMT', 'FP'],  # Fair Meadows -> try Fair Meadows Tulsa, then Fairmount Park
+            'RP': ['RP']    # Remington Park stays the same
         }
-        api_track_code = track_map.get(track_code, track_code)
+        
+        possible_codes = track_map.get(track_code, [track_code])
+        if isinstance(possible_codes, str):
+            possible_codes = [possible_codes]
         
         async with httpx.AsyncClient() as client:
             try:
@@ -118,12 +137,15 @@ class RacingAPIClient:
                 meets_response.raise_for_status()
                 meets_data = meets_response.json()
                 
-                # Find the meet for our track and date
+                # Try each possible track code
                 meet_id = None
                 
-                for meet in meets_data.get('meets', []):
-                    if meet.get('track_id') == api_track_code and meet.get('date') == target_date:
-                        meet_id = meet.get('meet_id')
+                for api_track_code in possible_codes:
+                    for meet in meets_data.get('meets', []):
+                        if meet.get('track_id') == api_track_code and meet.get('date') == target_date:
+                            meet_id = meet.get('meet_id')
+                            break
+                    if meet_id:
                         break
                 
                 if not meet_id:
