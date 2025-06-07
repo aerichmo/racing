@@ -115,7 +115,9 @@ class RacingAPIClient:
                     race_num = race.get('race_number')
                 
                 if race_num == race_number:
-                    return {"entries": race.get('entries', [])}
+                    # Fair Meadows uses 'runners' instead of 'entries'
+                    entries = race.get('entries', []) or race.get('runners', [])
+                    return {"entries": entries}
             
             return {"entries": []}  # No matching race found
         else:

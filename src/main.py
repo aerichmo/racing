@@ -525,6 +525,22 @@ async def debug_race_structure():
                     result[f"has_{field}"] = True
                     if isinstance(first_race[field], list):
                         result[f"{field}_count"] = len(first_race[field])
+                        
+                        # For runners, show the structure
+                        if field == 'runners' and first_race[field]:
+                            first_runner = first_race[field][0]
+                            result["runner_fields"] = list(first_runner.keys())
+                            
+                            # Map key fields
+                            result["runner_mapping"] = {
+                                "horse_name": first_runner.get('horse_name') or first_runner.get('name'),
+                                "horse_id": first_runner.get('horse_registration_number') or first_runner.get('horse_id'),
+                                "jockey_name": first_runner.get('jockey_name') or first_runner.get('jockey'),
+                                "trainer_name": first_runner.get('trainer_name') or first_runner.get('trainer'),
+                                "post_position": first_runner.get('post_position') or first_runner.get('post'),
+                                "program_number": first_runner.get('program_number'),
+                                "odds": first_runner.get('morning_line_odds') or first_runner.get('odds')
+                            }
         
         return result
         
