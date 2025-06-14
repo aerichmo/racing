@@ -90,9 +90,9 @@ async def home():
     with open(template_path, "r") as f:
         return f.read()
 
-@app.get("/live-odds", response_class=HTMLResponse)
-async def live_odds_page():
-    template_path = BASE_DIR / "templates" / "live_odds.html"
+@app.get("/admin/odds", response_class=HTMLResponse)
+async def admin_odds_page():
+    template_path = BASE_DIR / "templates" / "admin_odds.html"
     with open(template_path, "r") as f:
         return f.read()
 

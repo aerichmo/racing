@@ -284,14 +284,28 @@
             color: #e74c3c;
             font-weight: bold;
         }
+        
+        .bet-amount {
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+        
+        #optimal-betting h3 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+        }
+        
+        #optimal-betting .recommendations-table {
+            margin-bottom: 20px;
+        }
     </style>
 </head>
 <body>
     <header>
         <h1>Horse Racing Betting Platform</h1>
         <div style="text-align: center; margin-top: 10px;">
-            <a href="/live-odds" style="color: white; text-decoration: none; padding: 10px 20px; background-color: #e74c3c; border-radius: 5px; display: inline-block;">
-                📊 Live Odds Management
+            <a href="/admin/odds" style="color: white; text-decoration: none; padding: 10px 20px; background-color: #95a5a6; border-radius: 5px; display: inline-block; font-size: 0.9em;">
+                🔐 Admin Panel
             </a>
         </div>
     </header>
@@ -318,6 +332,11 @@
         
         <div id="recommendations-container">
             <div class="loading">Select a track to view recommendations</div>
+        </div>
+        
+        <div id="optimal-betting" class="roi-stats" style="display: none; margin-top: 30px;">
+            <h2>Optimal Betting Strategy</h2>
+            <div id="optimal-recommendations"></div>
         </div>
         
         <div id="performance-metrics" class="roi-stats" style="display: none; margin-top: 30px;">
@@ -438,6 +457,8 @@
             await loadROIStats();
             await loadRecommendations();
             await loadPerformanceMetrics();
+            await loadLiveOdds();
+            await loadOptimalBetting();
             
             // Clear any existing refresh interval
             if (refreshInterval) {
@@ -505,7 +526,8 @@
                                     <tr>
                                         <th>Horse</th>
                                         <th>Post</th>
-                                        <th>Odds</th>
+                                        <th>Morning Line</th>
+                                        <th>Live Odds</th>
                                         <th>% of Budget</th>
                                         <th>Confidence</th>
                                         <th>Expected Value</th>
@@ -516,7 +538,8 @@
                                         <tr>
                                             <td class="horse-name">${rec.horse_name}</td>
                                             <td>${rec.post_position}</td>
-                                            <td>${rec.current_odds}:1</td>
+                                            <td>${rec.morning_line || rec.current_odds}:1</td>
+                                            <td id="live-odds-${rec.entry_id || rec.post_position}">${rec.current_odds}:1</td>
                                             <td>${rec.percentage_of_budget}%</td>
                                             <td class="${getConfidenceClass(rec.confidence)}">${rec.confidence}%</td>
                                             <td>${rec.expected_value}x</td>
@@ -744,6 +767,101 @@
                 console.error('Error loading performance metrics:', error);
             }
         }
+        
+        async function loadOptimalBetting() {
+            if (!currentTrackId) return;
+            
+            try {
+                const response = await fetch(`/api/betting/optimal/${currentTrackId}?bankroll=1000`);
+                const data = await response.json();
+                
+                const container = document.getElementById('optimal-recommendations');
+                const section = document.getElementById('optimal-betting');
+                
+                if (!data.recommendations || data.recommendations.length === 0) {
+                    container.innerHTML = '<div class="no-recommendations">No betting opportunities found with sufficient edge</div>';
+                    section.style.display = 'block';
+                    return;
+                }
+                
+                section.style.display = 'block';
+                
+                container.innerHTML = data.recommendations.map(race => `
+                    <div style="margin-bottom: 30px;">
+                        <h3 style="margin-bottom: 15px; color: #2c3e50;">Race ${race.race_number} - ${race.race_time}</h3>
+                        <table class="recommendations-table">
+                            <thead>
+                                <tr>
+                                    <th>Bet Type</th>
+                                    <th>Horse</th>
+                                    <th>Post</th>
+                                    <th>Live Odds</th>
+                                    <th>Win Prob</th>
+                                    <th>Edge</th>
+                                    <th>Recommended Bet</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${race.recommendations.map(rec => `
+                                    <tr style="background-color: ${getBetTypeColor(rec.bet_type, 0.1)}">
+                                        <td style="font-weight: bold; color: ${getBetTypeColor(rec.bet_type)}">${rec.bet_type}</td>
+                                        <td class="horse-name">${rec.horse_name}</td>
+                                        <td>${rec.post_position}</td>
+                                        <td>${rec.current_odds}:1</td>
+                                        <td>${(rec.win_probability * 100).toFixed(1)}%</td>
+                                        <td class="${rec.edge > 0.2 ? 'roi-positive' : ''}">${(rec.edge * 100).toFixed(1)}%</td>
+                                        <td class="bet-amount" style="color: #27ae60; font-weight: bold;">$${rec.bet_amount}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `).join('');
+                
+            } catch (error) {
+                console.error('Error loading optimal betting:', error);
+                document.getElementById('optimal-betting').style.display = 'none';
+            }
+        }
+        
+        function getBetTypeColor(betType, opacity = 1) {
+            switch(betType) {
+                case 'WIN': return opacity < 1 ? `rgba(52, 152, 219, ${opacity})` : '#3498db';
+                case 'PLACE': return opacity < 1 ? `rgba(155, 89, 182, ${opacity})` : '#9b59b6';
+                case 'SHOW': return opacity < 1 ? `rgba(243, 156, 18, ${opacity})` : '#f39c12';
+                default: return opacity < 1 ? `rgba(127, 140, 141, ${opacity})` : '#7f8c8d';
+            }
+        }
+        
+        async function loadLiveOdds() {
+            if (!currentTrackId) return;
+            
+            try {
+                const response = await fetch(`/api/odds/live/${currentTrackId}`);
+                const data = await response.json();
+                
+                // Update live odds in the tables
+                data.races.forEach(race => {
+                    race.entries.forEach(entry => {
+                        const oddsCell = document.getElementById(`live-odds-${entry.entry_id}`);
+                        if (oddsCell) {
+                            oddsCell.textContent = `${entry.current_odds}:1`;
+                        }
+                    });
+                });
+                
+            } catch (error) {
+                console.error('Error loading live odds:', error);
+            }
+        }
+        
+        // Auto-refresh live odds every 30 seconds
+        setInterval(() => {
+            if (currentTrackId) {
+                loadLiveOdds();
+                loadOptimalBetting();
+            }
+        }, 30000);
         
     </script>
 </body>
