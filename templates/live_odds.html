@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Odds Management - Horse Racing Platform</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 20px 0;
+            margin-bottom: 30px;
+        }
+        
+        h1 {
+            text-align: center;
+            font-size: 2.5em;
+        }
+        
+        .track-selector {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .track-btn {
+            padding: 15px 30px;
+            font-size: 1.1em;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background-color: #3498db;
+            color: white;
+        }
+        
+        .track-btn:hover {
+            background-color: #2980b9;
+            transform: translateY(-2px);
+        }
+        
+        .track-btn.active {
+            background-color: #27ae60;
+        }
+        
+        .connection-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-weight: bold;
+            z-index: 1000;
+        }
+        
+        .connection-status.connected {
+            background-color: #27ae60;
+            color: white;
+        }
+        
+        .connection-status.disconnected {
+            background-color: #e74c3c;
+            color: white;
+        }
+        
+        .race-section {
+            background-color: white;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+        
+        .race-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #ecf0f1;
+        }
+        
+        .race-title {
+            font-size: 1.8em;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        
+        .race-time {
+            font-size: 1.2em;
+            color: #7f8c8d;
+        }
+        
+        .odds-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .odds-table th,
+        .odds-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ecf0f1;
+        }
+        
+        .odds-table th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .odds-input {
+            width: 80px;
+            padding: 8px;
+            border: 2px solid #bdc3c7;
+            border-radius: 4px;
+            font-size: 1em;
+            text-align: center;
+        }
+        
+        .odds-input:focus {
+            outline: none;
+            border-color: #3498db;
+        }
+        
+        .update-btn {
+            padding: 6px 15px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.3s ease;
+        }
+        
+        .update-btn:hover {
+            background-color: #2980b9;
+        }
+        
+        .update-btn:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+        
+        .odds-change {
+            font-size: 0.85em;
+            margin-left: 10px;
+        }
+        
+        .odds-up {
+            color: #e74c3c;
+        }
+        
+        .odds-down {
+            color: #27ae60;
+        }
+        
+        .betting-analysis {
+            background-color: white;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-top: 30px;
+        }
+        
+        .analysis-header {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 20px;
+        }
+        
+        .recommendations-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .recommendation-card {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            border: 2px solid transparent;
+        }
+        
+        .recommendation-card.win {
+            border-color: #3498db;
+        }
+        
+        .recommendation-card.place {
+            border-color: #9b59b6;
+        }
+        
+        .recommendation-card.show {
+            border-color: #f39c12;
+        }
+        
+        .bet-type {
+            font-size: 1.2em;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .bet-details {
+            margin: 5px 0;
+            color: #555;
+        }
+        
+        .bet-amount {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #27ae60;
+            margin-top: 10px;
+        }
+        
+        .no-data {
+            text-align: center;
+            color: #7f8c8d;
+            padding: 40px;
+            font-size: 1.2em;
+        }
+        
+        .refresh-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 15px 25px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: 500;
+            box-shadow: 0 2px 10px rgba(52, 152, 219, 0.3);
+            transition: all 0.3s ease;
+        }
+        
+        .refresh-btn:hover {
+            background-color: #2980b9;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(52, 152, 219, 0.4);
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Live Odds Management</h1>
+    </header>
+    
+    <div class="connection-status disconnected" id="connection-status">
+        Disconnected
+    </div>
+    
+    <div class="container">
+        <div class="track-selector">
+            <button class="track-btn" onclick="selectTrack(1, 'Remington Park')">Remington Park</button>
+            <button class="track-btn" onclick="selectTrack(2, 'Fair Meadows')">Fair Meadows</button>
+        </div>
+        
+        <div id="races-container">
+            <div class="no-data">Select a track to view and manage live odds</div>
+        </div>
+        
+        <div id="betting-analysis" class="betting-analysis" style="display: none;">
+            <div class="analysis-header">Optimal Betting Recommendations</div>
+            <div id="recommendations-container"></div>
+        </div>
+    </div>
+    
+    <button class="refresh-btn" onclick="refreshData()">🔄 Refresh</button>
+    
+    <script>
+        let currentTrackId = null;
+        let ws = null;
+        let oddsHistory = {};
+        
+        function selectTrack(trackId, trackName) {
+            currentTrackId = trackId;
+            
+            // Update UI
+            document.querySelectorAll('.track-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            // Connect WebSocket
+            connectWebSocket(trackId);
+            
+            // Load live odds
+            loadLiveOdds(trackId);
+            
+            // Load betting recommendations
+            loadBettingRecommendations(trackId);
+        }
+        
+        function connectWebSocket(trackId) {
+            // Close existing connection
+            if (ws) {
+                ws.close();
+            }
+            
+            // Create new WebSocket connection
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/odds/${trackId}`;
+            
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = function() {
+                updateConnectionStatus(true);
+                console.log('WebSocket connected for track', trackId);
+            };
+            
+            ws.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                handleOddsUpdate(data);
+            };
+            
+            ws.onerror = function(error) {
+                console.error('WebSocket error:', error);
+                updateConnectionStatus(false);
+            };
+            
+            ws.onclose = function() {
+                updateConnectionStatus(false);
+                console.log('WebSocket disconnected');
+            };
+        }
+        
+        function updateConnectionStatus(connected) {
+            const status = document.getElementById('connection-status');
+            if (connected) {
+                status.textContent = 'Connected';
+                status.className = 'connection-status connected';
+            } else {
+                status.textContent = 'Disconnected';
+                status.className = 'connection-status disconnected';
+            }
+        }
+        
+        async function loadLiveOdds(trackId) {
+            try {
+                const response = await fetch(`/api/odds/live/${trackId}`);
+                const data = await response.json();
+                
+                displayRaces(data.races);
+            } catch (error) {
+                console.error('Error loading live odds:', error);
+                document.getElementById('races-container').innerHTML = 
+                    '<div class="no-data">Error loading odds data</div>';
+            }
+        }
+        
+        function displayRaces(races) {
+            const container = document.getElementById('races-container');
+            
+            if (!races || races.length === 0) {
+                container.innerHTML = '<div class="no-data">No races scheduled for today</div>';
+                return;
+            }
+            
+            container.innerHTML = races.map(race => `
+                <div class="race-section" id="race-${race.race_id}">
+                    <div class="race-header">
+                        <div class="race-title">Race ${race.race_number}</div>
+                        <div class="race-time">${race.race_time}</div>
+                    </div>
+                    <table class="odds-table">
+                        <thead>
+                            <tr>
+                                <th>Post</th>
+                                <th>Horse</th>
+                                <th>Jockey</th>
+                                <th>Morning Line</th>
+                                <th>Current Odds</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${race.entries.map(entry => `
+                                <tr id="entry-${entry.entry_id}">
+                                    <td>${entry.post_position}</td>
+                                    <td><strong>${entry.horse_name}</strong></td>
+                                    <td>${entry.jockey}</td>
+                                    <td>${entry.morning_line}:1</td>
+                                    <td>
+                                        <input type="number" 
+                                               class="odds-input" 
+                                               id="odds-${entry.entry_id}" 
+                                               value="${entry.current_odds}" 
+                                               min="0.1" 
+                                               step="0.1">
+                                        <span class="odds-change" id="change-${entry.entry_id}"></span>
+                                    </td>
+                                    <td>
+                                        <button class="update-btn" 
+                                                onclick="updateOdds(${race.race_id}, ${entry.entry_id})">
+                                            Update
+                                        </button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `).join('');
+            
+            // Store initial odds for comparison
+            races.forEach(race => {
+                race.entries.forEach(entry => {
+                    oddsHistory[entry.entry_id] = entry.current_odds;
+                });
+            });
+        }
+        
+        async function updateOdds(raceId, entryId) {
+            const input = document.getElementById(`odds-${entryId}`);
+            const button = event.target;
+            const newOdds = parseFloat(input.value);
+            
+            if (isNaN(newOdds) || newOdds <= 0) {
+                alert('Please enter a valid odds value');
+                return;
+            }
+            
+            button.disabled = true;
+            button.textContent = 'Updating...';
+            
+            try {
+                const response = await fetch('/api/odds/manual', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        race_id: raceId,
+                        entry_id: entryId,
+                        odds: newOdds
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to update odds');
+                }
+                
+                const result = await response.json();
+                
+                // Update history
+                oddsHistory[entryId] = newOdds;
+                
+                // Refresh recommendations
+                loadBettingRecommendations(currentTrackId);
+                
+            } catch (error) {
+                console.error('Error updating odds:', error);
+                alert('Failed to update odds');
+            } finally {
+                button.disabled = false;
+                button.textContent = 'Update';
+            }
+        }
+        
+        function handleOddsUpdate(data) {
+            if (data.type === 'odds_update') {
+                const input = document.getElementById(`odds-${data.entry_id}`);
+                const changeSpan = document.getElementById(`change-${data.entry_id}`);
+                
+                if (input && !document.activeElement.isSameNode(input)) {
+                    const oldOdds = parseFloat(input.value);
+                    input.value = data.new_odds;
+                    
+                    // Show change indicator
+                    if (oldOdds !== data.new_odds) {
+                        const change = data.new_odds - oldOdds;
+                        changeSpan.textContent = change > 0 ? `↑ +${change.toFixed(1)}` : `↓ ${change.toFixed(1)}`;
+                        changeSpan.className = change > 0 ? 'odds-change odds-up' : 'odds-change odds-down';
+                        
+                        // Fade out after 3 seconds
+                        setTimeout(() => {
+                            changeSpan.textContent = '';
+                        }, 3000);
+                    }
+                }
+                
+                // Refresh recommendations
+                loadBettingRecommendations(currentTrackId);
+            }
+        }
+        
+        async function loadBettingRecommendations(trackId) {
+            if (!trackId) return;
+            
+            try {
+                const response = await fetch(`/api/betting/optimal/${trackId}?bankroll=1000`);
+                const data = await response.json();
+                
+                displayRecommendations(data);
+            } catch (error) {
+                console.error('Error loading recommendations:', error);
+            }
+        }
+        
+        function displayRecommendations(data) {
+            const container = document.getElementById('recommendations-container');
+            const analysisSection = document.getElementById('betting-analysis');
+            
+            if (!data.recommendations || data.recommendations.length === 0) {
+                container.innerHTML = '<div class="no-data">No betting opportunities found with sufficient edge</div>';
+                analysisSection.style.display = 'block';
+                return;
+            }
+            
+            analysisSection.style.display = 'block';
+            
+            container.innerHTML = data.recommendations.map(race => `
+                <div>
+                    <h3 style="margin-bottom: 15px;">Race ${race.race_number} - ${race.race_time}</h3>
+                    <div class="recommendations-grid">
+                        ${race.recommendations.map(rec => `
+                            <div class="recommendation-card ${rec.bet_type.toLowerCase()}">
+                                <div class="bet-type" style="color: ${getBetTypeColor(rec.bet_type)}">
+                                    ${rec.bet_type} BET
+                                </div>
+                                <div class="bet-details"><strong>${rec.horse_name}</strong> (Post ${rec.post_position})</div>
+                                <div class="bet-details">Current Odds: ${rec.current_odds}:1</div>
+                                <div class="bet-details">Win Probability: ${(rec.win_probability * 100).toFixed(1)}%</div>
+                                <div class="bet-details">Edge: ${(rec.edge * 100).toFixed(1)}%</div>
+                                <div class="bet-details">Expected Value: ${rec.expected_value.toFixed(2)}x</div>
+                                <div class="bet-amount">Bet: $${rec.bet_amount}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function getBetTypeColor(betType) {
+            switch(betType) {
+                case 'WIN': return '#3498db';
+                case 'PLACE': return '#9b59b6';
+                case 'SHOW': return '#f39c12';
+                default: return '#7f8c8d';
+            }
+        }
+        
+        function refreshData() {
+            if (currentTrackId) {
+                loadLiveOdds(currentTrackId);
+                loadBettingRecommendations(currentTrackId);
+            }
+        }
+        
+        // Auto-refresh every 30 seconds
+        setInterval(() => {
+            if (currentTrackId) {
+                loadBettingRecommendations(currentTrackId);
+            }
+        }, 30000);
+    </script>
+</body>
+</html>

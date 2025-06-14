@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
@@ -6,16 +6,48 @@ from sqlalchemy import func
 from datetime import date, datetime
 import asyncio
 import re
-from typing import List, Dict
+from typing import List, Dict, Set
 from pathlib import Path
 from contextlib import asynccontextmanager
+import json
 
-from database import get_db, Base, get_engine, Track, Race, Bet, BetResult, DailyROI, RaceEntry, RaceResult
+from database import get_db, Base, get_engine, Track, Race, Bet, BetResult, DailyROI, RaceEntry, RaceResult, Horse, Jockey, Trainer, OddsHistory
 from betting_engine import BettingEngine
 import os
 
 # Get the base directory (parent of src)
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# WebSocket connection manager
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: Dict[int, Set[WebSocket]] = {}
+        
+    async def connect(self, websocket: WebSocket, track_id: int):
+        await websocket.accept()
+        if track_id not in self.active_connections:
+            self.active_connections[track_id] = set()
+        self.active_connections[track_id].add(websocket)
+        
+    def disconnect(self, websocket: WebSocket, track_id: int):
+        if track_id in self.active_connections:
+            self.active_connections[track_id].discard(websocket)
+            if not self.active_connections[track_id]:
+                del self.active_connections[track_id]
+                
+    async def broadcast_odds(self, track_id: int, data: dict):
+        if track_id in self.active_connections:
+            disconnected = set()
+            for connection in self.active_connections[track_id]:
+                try:
+                    await connection.send_json(data)
+                except:
+                    disconnected.add(connection)
+            # Clean up disconnected clients
+            for conn in disconnected:
+                self.disconnect(conn, track_id)
+
+manager = ConnectionManager()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -55,6 +87,12 @@ app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
 @app.get("/", response_class=HTMLResponse)
 async def home():
     template_path = BASE_DIR / "templates" / "index.html"
+    with open(template_path, "r") as f:
+        return f.read()
+
+@app.get("/live-odds", response_class=HTMLResponse)
+async def live_odds_page():
+    template_path = BASE_DIR / "templates" / "live_odds.html"
     with open(template_path, "r") as f:
         return f.read()
 
@@ -869,6 +907,163 @@ async def get_performance_metrics(track_id: int, days: int = 30, db: Session = D
         ]
     }
 
+
+# WebSocket endpoint for live odds streaming
+@app.websocket("/ws/odds/{track_id}")
+async def websocket_odds(websocket: WebSocket, track_id: int, db: Session = Depends(get_db)):
+    await manager.connect(websocket, track_id)
+    try:
+        while True:
+            # Keep connection alive and handle any incoming messages
+            data = await websocket.receive_text()
+            # Could handle client messages here if needed
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, track_id)
+
+
+# Manual odds update endpoint
+@app.post("/api/odds/manual")
+async def update_manual_odds(
+    race_id: int,
+    entry_id: int,
+    odds: float,
+    db: Session = Depends(get_db)
+):
+    """Manually update odds for a specific entry and broadcast via WebSocket"""
+    try:
+        # Update the odds in the database
+        entry = db.query(RaceEntry).filter(
+            RaceEntry.id == entry_id,
+            RaceEntry.race_id == race_id
+        ).first()
+        
+        if not entry:
+            raise HTTPException(status_code=404, detail="Entry not found")
+            
+        # Save old odds for history
+        old_odds = entry.current_odds
+        
+        # Update current odds
+        entry.current_odds = odds
+        
+        # Add to odds history
+        odds_history = OddsHistory(
+            entry_id=entry_id,
+            odds=odds,
+            source='manual'
+        )
+        db.add(odds_history)
+        
+        db.commit()
+        
+        # Get track_id for broadcasting
+        race = db.query(Race).filter(Race.id == race_id).first()
+        if race:
+            # Broadcast the update via WebSocket
+            await manager.broadcast_odds(race.track_id, {
+                "type": "odds_update",
+                "race_id": race_id,
+                "entry_id": entry_id,
+                "horse_name": entry.horse.name,
+                "new_odds": odds,
+                "timestamp": datetime.now().isoformat()
+            })
+        
+        return {
+            "status": "success",
+            "race_id": race_id,
+            "entry_id": entry_id,
+            "new_odds": odds
+        }
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Get live odds endpoint
+@app.get("/api/odds/live/{track_id}")
+async def get_live_odds(track_id: int, db: Session = Depends(get_db)):
+    """Get current live odds for all races at a track today"""
+    today = date.today()
+    
+    races = db.query(Race).filter(
+        Race.track_id == track_id,
+        Race.race_date == today
+    ).order_by(Race.race_time).all()
+    
+    live_odds = []
+    for race in races:
+        entries = db.query(RaceEntry).filter(
+            RaceEntry.race_id == race.id
+        ).order_by(RaceEntry.post_position).all()
+        
+        race_odds = {
+            "race_id": race.id,
+            "race_number": race.race_number,
+            "race_time": race.race_time.strftime("%I:%M %p"),
+            "entries": [
+                {
+                    "entry_id": entry.id,
+                    "post_position": entry.post_position,
+                    "horse_name": entry.horse.name,
+                    "jockey": entry.jockey.name if entry.jockey else "Unknown",
+                    "current_odds": entry.current_odds,
+                    "morning_line": entry.morning_line_odds
+                }
+                for entry in entries
+            ]
+        }
+        live_odds.append(race_odds)
+        
+    return {"track_id": track_id, "races": live_odds}
+
+
+# Get optimal betting recommendations
+@app.get("/api/betting/optimal/{track_id}")
+async def get_optimal_bets(track_id: int, bankroll: float = 1000.0, db: Session = Depends(get_db)):
+    """Get optimal Win/Place/Show betting recommendations based on current odds"""
+    try:
+        from simple_optimal_model import SimpleOptimalBettingModel
+        
+        model = SimpleOptimalBettingModel(db, bankroll)
+        today = date.today()
+        
+        races = db.query(Race).filter(
+            Race.track_id == track_id,
+            Race.race_date == today
+        ).order_by(Race.race_time).all()
+        
+        all_recommendations = []
+        
+        for race in races:
+            recommendations = model.analyze_race(race)
+            if recommendations:
+                all_recommendations.append({
+                    "race_id": race.id,
+                    "race_number": race.race_number,
+                    "race_time": race.race_time.strftime("%I:%M %p"),
+                    "recommendations": recommendations
+                })
+                
+        return {
+            "track_id": track_id,
+            "bankroll": bankroll,
+            "recommendations": all_recommendations,
+            "total_races": len(races),
+            "races_with_bets": len(all_recommendations)
+        }
+        
+    except ImportError:
+        # If model not yet implemented, return placeholder
+        return {
+            "track_id": track_id,
+            "bankroll": bankroll,
+            "recommendations": [],
+            "message": "Optimal betting model not yet implemented"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":

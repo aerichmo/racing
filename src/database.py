@@ -179,6 +179,17 @@ class DailyROI(Base):
     
     track = relationship("Track")
 
+class OddsHistory(Base):
+    __tablename__ = "odds_history"
+    
+    id = Column(Integer, primary_key=True)
+    entry_id = Column(Integer, ForeignKey("race_entries.id"))
+    odds = Column(Float)
+    timestamp = Column(DateTime, server_default=func.now())
+    source = Column(String)  # 'manual' or 'api'
+    
+    entry = relationship("RaceEntry")
+
 def get_db():
     SessionLocal = get_session_local()
     db = SessionLocal()
