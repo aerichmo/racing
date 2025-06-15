@@ -96,6 +96,13 @@ async def admin_odds_page():
     with open(template_path, "r") as f:
         return f.read()
 
+# TEMPORARY: Page to clear odds data
+@app.get("/admin/clear-odds-temp", response_class=HTMLResponse)
+async def clear_odds_page():
+    template_path = BASE_DIR / "templates" / "clear_odds_temp.html"
+    with open(template_path, "r") as f:
+        return f.read()
+
 @app.get("/api/tracks")
 async def get_tracks(db: Session = Depends(get_db)):
     tracks = db.query(Track).all()
@@ -1064,6 +1071,86 @@ async def get_optimal_bets(track_id: int, bankroll: float = 1000.0, db: Session 
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# TEMPORARY: Clear odds data for specific date
+@app.post("/api/admin/clear-odds-0614/{secret_key}")
+async def clear_odds_june_14(secret_key: str, db: Session = Depends(get_db)):
+    """Temporary endpoint to clear odds data for June 14, 2024"""
+    # Simple security check
+    if secret_key != "clear-odds-2024-temp":
+        raise HTTPException(status_code=403, detail="Invalid secret key")
+    
+    try:
+        from datetime import date
+        target_date = date(2024, 6, 14)
+        
+        # Find all races for the target date
+        races = db.query(Race).filter(
+            Race.race_date == target_date
+        ).all()
+        
+        if not races:
+            return {"status": "error", "message": f"No races found for {target_date}"}
+        
+        # Counter for affected records
+        entries_cleared = 0
+        history_deleted = 0
+        race_details = []
+        
+        for race in races:
+            # Clear current_odds from race entries
+            entries = db.query(RaceEntry).filter(
+                RaceEntry.race_id == race.id,
+                RaceEntry.current_odds.isnot(None)
+            ).all()
+            
+            race_entries_cleared = 0
+            for entry in entries:
+                entry.current_odds = None
+                entries_cleared += 1
+                race_entries_cleared += 1
+            
+            # Delete odds history for this race's entries
+            entry_ids = [e.id for e in db.query(RaceEntry).filter(RaceEntry.race_id == race.id).all()]
+            race_history_deleted = 0
+            if entry_ids:
+                history_count = db.query(OddsHistory).filter(
+                    OddsHistory.entry_id.in_(entry_ids)
+                ).count()
+                
+                if history_count > 0:
+                    db.query(OddsHistory).filter(
+                        OddsHistory.entry_id.in_(entry_ids)
+                    ).delete(synchronize_session=False)
+                    history_deleted += history_count
+                    race_history_deleted = history_count
+            
+            race_details.append({
+                "race_id": race.id,
+                "track_id": race.track_id,
+                "race_number": race.race_number,
+                "entries_cleared": race_entries_cleared,
+                "history_deleted": race_history_deleted
+            })
+        
+        # Commit the changes
+        db.commit()
+        
+        return {
+            "status": "success",
+            "message": f"Successfully cleared odds data for {target_date}",
+            "summary": {
+                "total_races": len(races),
+                "entries_cleared": entries_cleared,
+                "history_deleted": history_deleted
+            },
+            "race_details": race_details
+        }
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error clearing odds data: {str(e)}")
 
 
 if __name__ == "__main__":
